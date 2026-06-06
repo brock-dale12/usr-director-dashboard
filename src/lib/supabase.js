@@ -10,4 +10,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '')
+export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    // Process the OAuth redirect (?code=...) on return from Google.
+    detectSessionInUrl: true,
+    flowType: 'pkce',
+  },
+})
