@@ -1508,3 +1508,51 @@ body {
 .ob-hs-status.ok { color: var(--st-green); }
 .ob-hs-status.err { color: var(--st-red, #EC3642); font-weight: 600; }
 .ob-pending-hs.synced { color: var(--st-green); background: rgba(29,178,113,0.08); border-color: rgba(29,178,113,0.3); }
+
+/* ═══ Onboarding customer view v2 (2026-06-12) — contact strip, activity band,
+   journey-driven tasks ══════════════════════════════════════════════════════ */
+
+/* contact strip */
+.ob-contact-strip { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-top: 10px; padding-bottom: 10px; }
+.ob-cs-name { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-display); font-weight: 800; font-size: 14px; color: var(--usr-black); }
+.ob-cs-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--fg-muted); }
+.ob-cs-item b { color: var(--usr-black); font-weight: 700; }
+.ob-cs-item.link { color: var(--usr-pink); text-decoration: none; }
+.ob-notes-btn { position: relative; }
+.ob-notes-btn.has-notes { color: var(--st-yellow); border-color: var(--st-yellow); }
+.ob-notes-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--usr-pink); border: 1.5px solid var(--usr-white); }
+.ob-contact-strip .ob-hs-status { margin: 0 0 0 4px; }
+
+/* activity band: TTV / weekly / health in one row */
+.ob-actband { display: grid; grid-template-columns: 1.1fr 1.2fr 1fr; gap: 10px; align-items: stretch; }
+@media (max-width: 900px) { .ob-actband { grid-template-columns: 1fr; } }
+.ob-actcard { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.ob-actcard-title { font-family: var(--font-display); font-weight: 800; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-subtle); margin-bottom: 6px; }
+.ob-actcard-foot { margin-top: 6px; font-size: 11.5px; color: var(--fg-muted); }
+.ob-actcard .ttv-block { border: none; padding: 0; margin: 0; }
+.ob-actcard .trend-now .v { font-size: 26px; }
+
+/* compact weekly matrix — color cells, numbers on hover */
+.wk2-matrix { display: flex; flex-direction: column; gap: 3px; }
+.wk2-row { display: grid; grid-template-columns: 44px repeat(8, 1fr); gap: 3px; align-items: center; }
+.wk2-label { font-size: 10.5px; font-weight: 700; color: var(--fg-subtle); text-transform: uppercase; letter-spacing: 0.04em; }
+.wk2-cell { height: 16px; border-radius: 3px; cursor: default; }
+.wk2-cell.pre { background: repeating-linear-gradient(45deg,#E6E8EA,#E6E8EA 3px,#F4F5F6 3px,#F4F5F6 6px); }
+.wk2-cell.tier-0 { background: #E6E8EA; }
+.wk2-cell.tier-1 { background: rgba(29,178,113,0.3); }
+.wk2-cell.tier-2 { background: rgba(29,178,113,0.6); }
+.wk2-cell.tier-3 { background: var(--st-green); }
+.wk2-cell:hover { outline: 1.5px solid var(--usr-black); }
+.wk2-foot { margin-top: 6px; font-size: 10.5px; color: var(--fg-subtle); }
+
+/* journey stages become clickable with task counts */
+.journey-stages .jstage { background: none; border: none; padding: 2px 4px; cursor: pointer; border-radius: 6px; font: inherit; }
+.journey-stages .jstage:hover { background: var(--bg-alt); }
+.journey-stages .jstage.viewing { background: rgba(236,54,66,0.07); }
+.journey-stages .jstage.viewing .jlabel { color: var(--usr-pink); }
+.jcount { display: block; margin-top: 2px; font-size: 10px; font-weight: 800; color: var(--fg-subtle); font-family: var(--font-display); }
+.jcount.behind { color: var(--st-red, #EC3642); }
+
+/* tasks under the journey */
+.ob-tasks-head { display: flex; align-items: center; gap: 8px; margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid var(--border); font-family: var(--font-display); font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--usr-black); }
+.ob-back-current { background: none; border: none; cursor: pointer; font-size: 11px; font-weight: 700; color: var(--usr-pink); text-transform: none; letter-spacing: 0; }

@@ -10,8 +10,8 @@ import {
 } from '../lib/onboardingCatalog'
 import { TTVPanel, StageControl, DetailsEditor, effectiveTtv, TTV_STATUS_META } from '../components/OnboardingControls'
 import {
-  Activity, Bell, ChevronDown, Mail, Phone, Calendar, Zap, Check, Settings,
-  CheckCircle, Send, Copy, ArrowRight, User, Loader2, TrendingUp, CheckSquare, Square, Pencil, StickyNote,
+  Activity, Bell, ChevronDown, Mail, Phone, Zap, Check, Settings,
+  CheckCircle, Send, Copy, ArrowRight, User, Loader2, CheckSquare, Square, Pencil, StickyNote,
 } from 'lucide-react'
 
 /**
@@ -99,8 +99,8 @@ function HealthTrend({ values, color = '#EC3642' }) {
   )
 }
 
-// ─── Journey timeline (progress-driven) ───────────────────────────────────────
-function JourneyTimeline({ stageKey, graduated, day }) {
+// ─── Journey timeline (progress-driven, clickable, task counts per stage) ─────
+function JourneyTimeline({ stageKey, graduated, day, catalog, doneSet, viewKey, onView }) {
   const idx = OB_INDEX[stageKey] ?? 0
   const pct = graduated ? 100 : (idx / (OB_STAGES.length - 1)) * 100
   return (
@@ -112,12 +112,23 @@ function JourneyTimeline({ stageKey, graduated, day }) {
         </div>
       </div>
       <div className="journey-stages">
-        {OB_STAGES.map((s, i) => (
-          <div key={s.key} className={`jstage ${graduated || i < idx ? 'done' : ''} ${!graduated && i === idx ? 'active' : ''}`}>
-            <span className="jdot">{(graduated || i < idx) ? <Check size={11} /> : null}</span>
-            <span className="jlabel">{s.short}</span>
-          </div>
-        ))}
+        {OB_STAGES.map((s, i) => {
+          const tracked = (catalog[s.key] || []).filter(t => !t.recurring)
+          const doneN = tracked.filter(t => doneSet.has(t.key)).length
+          const behind = (graduated || i < idx) && doneN < tracked.length // past stage with stragglers
+          return (
+            <button
+              key={s.key} type="button"
+              onClick={() => onView(s.key)}
+              title={`View ${s.label} tasks`}
+              className={`jstage ${graduated || i < idx ? 'done' : ''} ${!graduated && i === idx ? 'active' : ''} ${viewKey === s.key ? 'viewing' : ''}`}
+            >
+              <span className="jdot">{(graduated || i < idx) ? <Check size={11} /> : null}</span>
+              <span className="jlabel">{s.short}</span>
+              <span className={`jcount ${behind ? 'behind' : ''}`}>{doneN}/{tracked.length}</span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -130,30 +141,35 @@ function tier(metric, v) {
   if (metric === 'datapoints') return v >= 25 ? 3 : v >= 10 ? 2 : 1
   return v >= 4 ? 3 : v >= 2 ? 2 : 1 // prs
 }
+// Compact: color-only cells, exact numbers on hover (title). 8 weeks → now.
 function ActivityMatrix({ weeks }) {
   const slots = Array.from({ length: 8 }, (_, i) => weeks[i] || { preCustomer: true })
-  const HEAD = ['8w', '', '', '', '', '', '', 'now']
+  const ago = (i) => i === 7 ? 'this week' : `${7 - i}w ago`
+  const ROWS = [
+    { label: 'Logins',   metric: 'logins',     get: w => w.logins },
+    { label: 'Data',     metric: 'datapoints', get: w => w.datapoints },
+    { label: 'PRs',      metric: 'prs',        get: w => w.prs },
+  ]
   return (
     <>
-      <div className="wk-matrix">
-        <span className="wk-corner" />
-        {HEAD.map((hd, i) => <span className="wk-head" key={'h' + i}>{hd}</span>)}
-        <span className="wk-rowlabel">Activity</span>
-        {slots.map((wk, i) => (
-          <span key={'a' + i} className={`wk-act ${wk.preCustomer ? 'pre' : wk.color === 'green' ? 'on' : 'off'}`} />
+      <div className="wk2-matrix">
+        {ROWS.map(r => (
+          <div className="wk2-row" key={r.label}>
+            <span className="wk2-label">{r.label}</span>
+            {slots.map((wk, i) => {
+              const v = r.get(wk)
+              return (
+                <span
+                  key={i}
+                  className={`wk2-cell ${wk.preCustomer ? 'pre' : 'tier-' + tier(r.metric, v)}`}
+                  title={wk.preCustomer ? `${ago(i)} · before join` : `${ago(i)} · ${v ?? 0} ${r.label.toLowerCase()}`}
+                />
+              )
+            })}
+          </div>
         ))}
-        <span className="wk-rowlabel">Logins</span>
-        {slots.map((wk, i) => <span key={'l' + i} className={`wk-cell ${wk.preCustomer ? 'pre' : 'tier-' + tier('logins', wk.logins)}`}>{wk.preCustomer ? '·' : (wk.logins ?? 0)}</span>)}
-        <span className="wk-rowlabel">Data pts</span>
-        {slots.map((wk, i) => <span key={'d' + i} className={`wk-cell ${wk.preCustomer ? 'pre' : 'tier-' + tier('datapoints', wk.datapoints)}`}>{wk.preCustomer ? '·' : (wk.datapoints ?? 0)}</span>)}
-        <span className="wk-rowlabel">New PRs</span>
-        {slots.map((wk, i) => <span key={'p' + i} className={`wk-cell ${wk.preCustomer ? 'pre' : 'tier-' + tier('prs', wk.prs)}`}>{wk.preCustomer ? '·' : (wk.prs ?? 0)}</span>)}
       </div>
-      <div className="weeks-legend">
-        <span><i style={{ background: 'var(--st-green)' }} />Active</span>
-        <span><i style={{ background: '#DADCDE' }} />No activity</span>
-        <span><i style={{ background: 'repeating-linear-gradient(45deg,#E6E8EA,#E6E8EA 3px,#F4F5F6 3px,#F4F5F6 6px)' }} />Pre-join</span>
-      </div>
+      <div className="wk2-foot">8 wks → now · hover a cell for exact counts</div>
     </>
   )
 }
@@ -296,8 +312,8 @@ function ObCard({ c, catalog, open, onToggle, doneSet, doneMeta, onOpenTemplate,
   const ttv = effectiveTtv({ cs: c.cs, synced: c.ttvSynced, doneSet })
   const ttvMeta = TTV_STATUS_META[ttv.status] || TTV_STATUS_META.not_started
   const [editOpen, setEditOpen] = useState(false)
-  const [stagesOpen, setStagesOpen] = useState(() => new Set())
-  const toggleStage = (k) => setStagesOpen(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n })
+  const [viewStage, setViewStage] = useState(null) // null = follow the customer's current stage
+  const viewKey = viewStage || (c.graduated ? 'qbr' : c.stageKey)
 
   return (
     <div className={`ob-card ${open ? 'open' : ''}`}>
@@ -334,110 +350,87 @@ function ObCard({ c, catalog, open, onToggle, doneSet, doneMeta, onOpenTemplate,
 
       {open && (
         <div className="ob-detail">
+          {/* 1. Contact strip — who to reach, one line, at the top */}
+          <div className="detail-block ob-contact-strip" style={{ gridColumn: '1 / -1' }}>
+            <span className="ob-cs-name"><User size={14} />{c.contactName || 'No contact on file'}</span>
+            {c.email && <a className="ob-cs-item link" href={`mailto:${c.email}`} onClick={e => e.stopPropagation()}><Mail size={13} />{c.email}</a>}
+            {c.phone && <span className="ob-cs-item"><Phone size={13} />{c.phone}</span>}
+            <span className="ob-cs-item">Director: <b>{c.director || '—'}</b></span>
+            <span className="ob-cs-item">Owner: <b>{c.owner || '—'}</b></span>
+            <span style={{ flex: 1 }} />
+            <button className={`ob-icon-btn ob-notes-btn ${c.cs?.notes ? 'has-notes' : ''}`} onClick={() => setEditOpen(o => !o)} title={c.cs?.notes ? `Team notes: ${c.cs.notes.slice(0, 120)}` : 'No team notes yet — click to add'}>
+              <StickyNote size={14} />{c.cs?.notes && <i className="ob-notes-dot" />}
+            </button>
+            <button className="ob-icon-btn" onClick={() => setEditOpen(o => !o)} title="Edit contact, director, notes"><Pencil size={13} /></button>
+            {hsPushState === 'pushing' && <span className="ob-hs-status"><Loader2 size={12} className="animate-spin" />Pushing to HubSpot…</span>}
+            {hsPushState === 'ok' && <span className="ob-hs-status ok"><CheckCircle size={12} />Pushed to HubSpot</span>}
+            {hsPushState && hsPushState !== 'pushing' && hsPushState !== 'ok' && <span className="ob-hs-status err" title={hsPushState}>HubSpot push failed — saved internally</span>}
+          </div>
+          {editOpen && (
+            <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
+              <DetailsEditor c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} onClose={() => setEditOpen(false)} />
+            </div>
+          )}
+
+          {/* 2. Activity band — TTV / weekly activity / health, one compact row */}
+          <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
+            <h4><Zap size={14} />Activity &amp; Health</h4>
+            <div className="ob-actband">
+              <div className="ob-actcard">
+                <div className="ob-actcard-title">Time-to-Value</div>
+                <TTVPanel c={c} cs={c.cs} synced={c.ttvSynced} onSave={onSaveCs} saving={savingCs} />
+              </div>
+              <div className="ob-actcard">
+                <div className="ob-actcard-title">Weekly Activity · 8w</div>
+                {c.weeks.length > 0
+                  ? <ActivityMatrix weeks={c.weeks} />
+                  : <p style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>No weekly activity yet — appears once platform usage flows.</p>}
+              </div>
+              <div className="ob-actcard">
+                <div className="ob-actcard-title">Health Trend</div>
+                <div className="trend-now">
+                  <span className="v" style={{ color: 'var(--usr-pink)' }}>{c.healthScore != null ? c.healthScore : '—'}<span style={{ fontSize: 16, color: 'var(--fg-subtle)' }}>/9</span></span>
+                </div>
+                <HealthTrend values={c.healthTrend} color="#EC3642" />
+                <div className="ob-actcard-foot">{c.athletes ?? '—'} athletes (30d) · {c.prs ?? '—'} PRs (8w)</div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Journey + tasks — red-dot timeline drives the task list below */}
           <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
             <h4>
               <Activity size={14} />90-Day Journey · {c.graduated ? 'Graduated' : OB_LABEL[c.stageKey]}
+              {!c.graduated && nextLabel && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'none', letterSpacing: 0 }}>complete required steps → {nextLabel}</span>}
               <span style={{ flex: 1 }} />
               <StageControl c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} />
             </h4>
-            <JourneyTimeline stageKey={c.stageKey} graduated={c.graduated} day={c.day} />
-          </div>
-
-          <div className="detail-block">
-            <h4><Zap size={14} />Time-to-Value</h4>
-            <TTVPanel c={c} cs={c.cs} synced={c.ttvSynced} onSave={onSaveCs} saving={savingCs} />
-          </div>
-
-          <div className="detail-block">
-            <h4><TrendingUp size={14} />Health Trend</h4>
-            <div className="trend-now">
-              <span className="v" style={{ color: 'var(--usr-pink)' }}>{c.healthScore != null ? c.healthScore : '—'}<span style={{ fontSize: 18, color: 'var(--fg-subtle)' }}>/9</span></span>
+            <JourneyTimeline
+              stageKey={c.stageKey} graduated={c.graduated} day={c.day}
+              catalog={catalog} doneSet={doneSet}
+              viewKey={viewKey} onView={(k) => setViewStage(k === viewKey ? null : k)}
+            />
+            <div className="ob-tasks-head">
+              <Send size={13} />
+              Tasks · {OB_LABEL[viewKey]}
+              {viewKey === c.stageKey && !c.graduated && <span className="ob-sg-now">current stage</span>}
+              {viewStage && viewStage !== c.stageKey && (
+                <button className="ob-back-current" onClick={() => setViewStage(null)}>← back to current stage</button>
+              )}
             </div>
-            <HealthTrend values={c.healthTrend} color="#EC3642" />
-            <div className="mini-metrics">
-              <div className="mm"><div className="v">{c.athletes ?? '—'}</div><div className="l">Athletes (30d)</div></div>
-              <div className="mm"><div className="v">{c.prs ?? '—'}</div><div className="l">New PRs (8w)</div></div>
-              <div className="mm"><div className="v">{c.day != null ? c.day : '—'}</div><div className="l">Day of 90</div></div>
-            </div>
-          </div>
-
-          <div className="detail-block">
-            <h4>
-              <User size={14} />Contact &amp; Details
-              <span style={{ flex: 1 }} />
-              <button className="ob-icon-btn" onClick={() => setEditOpen(o => !o)} title="Edit contact, director, notes"><Pencil size={13} /></button>
-            </h4>
-            {hsPushState === 'pushing' && <div className="ob-hs-status"><Loader2 size={12} className="animate-spin" />Pushing to HubSpot…</div>}
-            {hsPushState === 'ok' && <div className="ob-hs-status ok"><CheckCircle size={12} />Pushed to HubSpot</div>}
-            {hsPushState && hsPushState !== 'pushing' && hsPushState !== 'ok' && <div className="ob-hs-status err">HubSpot push failed: {hsPushState} — saved internally; will need a re-save once fixed</div>}
-            {editOpen ? (
-              <DetailsEditor c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} onClose={() => setEditOpen(false)} />
-            ) : (
-              <>
-                {c.contactName && <div className="contact-owner">{c.contactName}</div>}
-                {c.email ? <div className="contact-row"><Mail size={15} style={{ color: 'var(--fg-subtle)' }} /><span className="ct"><a href={`mailto:${c.email}`} style={{ color: 'var(--usr-pink)', textDecoration: 'none' }} onClick={e => e.stopPropagation()}>{c.email}</a></span></div>
-                  : <div className="contact-row"><Mail size={15} style={{ color: 'var(--fg-subtle)' }} /><span className="ct" style={{ color: 'var(--fg-subtle)' }}>no email on file</span></div>}
-                {c.phone && <div className="contact-row"><Phone size={15} style={{ color: 'var(--fg-subtle)' }} /><span className="ct">{c.phone}</span></div>}
-                <div className="contact-row"><User size={15} style={{ color: 'var(--fg-subtle)' }} /><span className="ct">Director: {c.director || 'Unassigned'}</span></div>
-                <div className="contact-row"><Calendar size={15} style={{ color: 'var(--fg-subtle)' }} /><span className="ct">Owner: {c.owner || 'Unassigned'}</span></div>
-                {c.cs?.notes && <div className="ob-notes"><StickyNote size={13} /><span>{c.cs.notes}</span></div>}
-              </>
+            {c.graduated && viewKey === 'qbr' && <div className="ob-no-actions"><CheckCircle size={16} style={{ color: 'var(--st-green)' }} />All onboarding steps complete — ready to graduate to ongoing success.</div>}
+            {(catalog[viewKey] || []).length === 0 && <div className="ob-no-actions"><CheckCircle size={16} />No steps queued for this stage — keep engaging weekly.</div>}
+            {(catalog[viewKey] || []).map(t => (
+              <TaskRow
+                key={t.key} task={t} c={c} isDone={doneSet.has(t.key)}
+                meta={doneMeta ? doneMeta[t.key] : null}
+                onOpen={() => onOpenTemplate(c, t)}
+                onToggle={(v) => onSetDone(t.key, v)}
+              />
+            ))}
+            {gatingKeys(viewKey).length > 0 && (
+              <div className="ob-gate-note">{gatingKeys(viewKey).filter(k => doneSet.has(k)).length}/{gatingKeys(viewKey).length} required steps done to advance</div>
             )}
-          </div>
-
-          <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-            <h4><Zap size={14} />Weekly Activity · last 8 weeks</h4>
-            {c.weeks.length > 0
-              ? <ActivityMatrix weeks={c.weeks} />
-              : <p style={{ fontSize: 13, color: 'var(--fg-subtle)' }}>No weekly activity data yet (Speed Lab platform usage appears here once it flows).</p>}
-          </div>
-
-          {/* 90-day checklist — every stage, persistent, timestamped */}
-          <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-            <h4>
-              <Send size={14} />90-Day Checklist
-              {!c.graduated && nextLabel && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'none', letterSpacing: 0 }}>complete {OB_LABEL[c.stageKey]}'s required steps to advance → {nextLabel}</span>}
-            </h4>
-            {c.graduated && <div className="ob-no-actions"><CheckCircle size={16} style={{ color: 'var(--st-green)' }} />All onboarding steps complete — ready to graduate to ongoing success.</div>}
-            {OB_STAGES.map((s, si) => {
-              const sTasks = catalog[s.key] || []
-              const tracked = sTasks.filter(t => !t.recurring)
-              const doneN = tracked.filter(t => doneSet.has(t.key)).length
-              const isCurrent = !c.graduated && s.key === c.stageKey
-              const isPast = c.graduated || si < OB_INDEX[c.stageKey]
-              const expanded = isCurrent || stagesOpen.has(s.key)
-              const sGates = gatingKeys(s.key)
-              return (
-                <div key={s.key} className={`ob-stagegrp ${isCurrent ? 'current' : ''} ${isPast ? 'past' : ''}`}>
-                  <button className="ob-stagegrp-head" onClick={() => toggleStage(s.key)}>
-                    <span className={`ob-sg-dot ${doneN === tracked.length && tracked.length > 0 ? 'done' : isCurrent ? 'active' : ''}`}>
-                      {doneN === tracked.length && tracked.length > 0 ? <Check size={11} /> : null}
-                    </span>
-                    <span className="ob-sg-label">{s.label}</span>
-                    {isCurrent && <span className="ob-sg-now">current stage</span>}
-                    <span style={{ flex: 1 }} />
-                    <span className="ob-sg-count">{doneN}/{tracked.length}</span>
-                    <ChevronDown size={15} className={`ob-sg-chev ${expanded ? 'open' : ''}`} />
-                  </button>
-                  {expanded && (
-                    <div className="ob-stagegrp-body">
-                      {sTasks.length === 0 && <div className="ob-no-actions"><CheckCircle size={16} />No steps queued for this stage — keep engaging weekly.</div>}
-                      {sTasks.map(t => (
-                        <TaskRow
-                          key={t.key} task={t} c={c} isDone={doneSet.has(t.key)}
-                          meta={doneMeta ? doneMeta[t.key] : null}
-                          onOpen={() => onOpenTemplate(c, t)}
-                          onToggle={(v) => onSetDone(t.key, v)}
-                        />
-                      ))}
-                      {sGates.length > 0 && (
-                        <div className="ob-gate-note">{sGates.filter(k => doneSet.has(k)).length}/{sGates.length} required steps done to advance</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
           </div>
         </div>
       )}
