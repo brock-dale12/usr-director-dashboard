@@ -1556,3 +1556,14 @@ body {
 /* tasks under the journey */
 .ob-tasks-head { display: flex; align-items: center; gap: 8px; margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid var(--border); font-family: var(--font-display); font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--usr-black); }
 .ob-back-current { background: none; border: none; cursor: pointer; font-size: 11px; font-weight: 700; color: var(--usr-pink); text-transform: none; letter-spacing: 0; }
+
+/* weekly matrix v3 — numbers in cells, official health-color coding */
+.wk2-cell { display: flex; align-items: center; justify-content: center; height: 18px; font-size: 10.5px; font-weight: 800; font-family: var(--font-display); border-radius: 3px; }
+.wk2-cell.hc-green   { background: rgba(29,178,113,0.22); color: #0B6B43; }
+.wk2-cell.hc-yellow  { background: rgba(255,217,0,0.3);   color: #7A6A00; }
+.wk2-cell.hc-orange  { background: rgba(242,129,14,0.22); color: #8F4D08; }
+.wk2-cell.hc-red     { background: rgba(236,54,66,0.18);  color: #9E1B25; }
+.wk2-cell.hc-unknown { background: #E6E8EA; color: var(--fg-subtle); }
+.wk2-cell.pre        { color: var(--fg-subtle); }
+.wk2-label { font-size: 10px; }
+.wk2-row { grid-template-columns: 52px repeat(8, 1fr); }

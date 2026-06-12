@@ -141,14 +141,18 @@ function tier(metric, v) {
   if (metric === 'datapoints') return v >= 25 ? 3 : v >= 10 ? 2 : 1
   return v >= 4 ? 3 : v >= 2 ? 2 : 1 // prs
 }
-// Compact: color-only cells, exact numbers on hover (title). 8 weeks → now.
+// Weekly matrix: numbers in every cell, colored by that week's official health
+// color (green = activity ≤7d · yellow 8–30d · orange 31–90d · red 90+d).
+// Rows: Session recaps, Logins, Data pts, Athletes, PRs.
 function ActivityMatrix({ weeks }) {
   const slots = Array.from({ length: 8 }, (_, i) => weeks[i] || { preCustomer: true })
   const ago = (i) => i === 7 ? 'this week' : `${7 - i}w ago`
   const ROWS = [
-    { label: 'Logins',   metric: 'logins',     get: w => w.logins },
-    { label: 'Data',     metric: 'datapoints', get: w => w.datapoints },
-    { label: 'PRs',      metric: 'prs',        get: w => w.prs },
+    { label: 'Recaps',   get: w => w.recaps },
+    { label: 'Logins',   get: w => w.logins },
+    { label: 'Data pts', get: w => w.datapoints },
+    { label: 'Athletes', get: w => w.athletes },
+    { label: 'PRs',      get: w => w.prs },
   ]
   return (
     <>
@@ -158,18 +162,21 @@ function ActivityMatrix({ weeks }) {
             <span className="wk2-label">{r.label}</span>
             {slots.map((wk, i) => {
               const v = r.get(wk)
+              const cls = wk.preCustomer ? 'pre' : `hc-${wk.color || 'unknown'}`
               return (
                 <span
                   key={i}
-                  className={`wk2-cell ${wk.preCustomer ? 'pre' : 'tier-' + tier(r.metric, v)}`}
-                  title={wk.preCustomer ? `${ago(i)} · before join` : `${ago(i)} · ${v ?? 0} ${r.label.toLowerCase()}`}
-                />
+                  className={`wk2-cell ${cls}`}
+                  title={wk.preCustomer ? `${ago(i)} · before join` : `${ago(i)} · ${v != null ? v : 'no data'} ${r.label.toLowerCase()} · week color: ${wk.color || 'unknown'}`}
+                >
+                  {wk.preCustomer ? '·' : (v != null ? v : '—')}
+                </span>
               )
             })}
           </div>
         ))}
       </div>
-      <div className="wk2-foot">8 wks → now · hover a cell for exact counts</div>
+      <div className="wk2-foot">8 wks → now · cell color = that week's activity level (green ≤7d · yellow 8–30d · orange 31–90d · red 90+d)</div>
     </>
   )
 }
@@ -647,7 +654,7 @@ export default function Onboarding() {
       .map(a => {
         const lab = a.lab_name
         const weekly = (lab && weeklyByLab[lab]) || weeklyByDeal[a.deal_id] || []
-        const last8 = weekly.slice(-8).map(w => ({ color: w.health_color, logins: w.logins_week, datapoints: w.data_pts_week, prs: w.prs_week, preCustomer: false }))
+        const last8 = weekly.slice(-8).map(w => ({ color: w.health_color, recaps: w.recaps_week, logins: w.logins_week, datapoints: w.data_pts_week, athletes: w.athletes_added_week, prs: w.prs_week, preCustomer: false }))
         const latest = weekly[weekly.length - 1]
         const doneSet = doneMap[a.deal_id] || EMPTY_SET
         const derived = deriveStage(catalog, doneSet)
