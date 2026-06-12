@@ -1,0 +1,19 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Vite scratch / cruft
+*.timestamp-*.mjs
+
+# Netlify local
+.netlify
+
+# OS
+.DS_Store

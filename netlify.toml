@@ -1,0 +1,44 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# ── Serverless Functions (the trust boundary) ───────────────────────
+# All secrets live in Netlify env vars and are read only inside Functions —
+# never in the Vite bundle. Reachable at /.netlify/functions/<name>.
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# ── Local dev — `netlify dev` runs Vite + Functions together ────────
+[dev]
+  command = "npm run dev"
+  framework = "vite"
+  targetPort = 5173
+
+# ── Security headers ────────────────────────────────────────────────
+# Applied to every response. Tightens clickjacking, MIME-sniffing, and
+# referrer leakage. CSP allows the app's own assets, the Supabase API +
+# websocket, and Google Fonts (used by index.html).
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+
+# ── Long-cache hashed build assets ──────────────────────────────────
+# Vite fingerprints filenames in /assets, so they can cache for a year.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# ── SPA catch-all — React Router handles client-side routing ────────
+# This is the canonical redirect. public/_redirects is now redundant and
+# can be deleted (it holds the same rule).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
