@@ -287,7 +287,7 @@ function TaskRow({ task, c, isDone, meta, onOpen, onToggle }) {
 }
 
 // ─── Onboarding customer card ─────────────────────────────────────────────────
-function ObCard({ c, catalog, open, onToggle, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs }) {
+function ObCard({ c, catalog, open, onToggle, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState }) {
   const color  = c.healthColor || 'unknown'
   const sColor = STATUS_COLORS[color]
   const tasks = catalog[c.stageKey] || []
@@ -367,6 +367,9 @@ function ObCard({ c, catalog, open, onToggle, doneSet, doneMeta, onOpenTemplate,
               <span style={{ flex: 1 }} />
               <button className="ob-icon-btn" onClick={() => setEditOpen(o => !o)} title="Edit contact, director, notes"><Pencil size={13} /></button>
             </h4>
+            {hsPushState === 'pushing' && <div className="ob-hs-status"><Loader2 size={12} className="animate-spin" />Pushing to HubSpot…</div>}
+            {hsPushState === 'ok' && <div className="ob-hs-status ok"><CheckCircle size={12} />Pushed to HubSpot</div>}
+            {hsPushState && hsPushState !== 'pushing' && hsPushState !== 'ok' && <div className="ob-hs-status err">HubSpot push failed: {hsPushState} — saved internally; will need a re-save once fixed</div>}
             {editOpen ? (
               <DetailsEditor c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} onClose={() => setEditOpen(false)} />
             ) : (
@@ -459,6 +462,7 @@ export default function Onboarding() {
   const [ttvByDeal, setTtvByDeal] = useState({})
   const [csByDeal, setCsByDeal] = useState({})         // dealId -> onboarding_cs row
   const [savingCs, setSavingCs] = useState(false)
+  const [hsPush, setHsPush] = useState({})             // dealId -> 'pushing' | 'ok' | error string
   const [ownerEmail, setOwnerEmail] = useState(null)
   const [filter, setFilter] = useState(null)
   const [openId, setOpenId] = useState(null)
@@ -541,12 +545,14 @@ export default function Onboarding() {
     return () => { cancelled = true }
   }, [])
 
-  // Save to the per-deal CS record + append timestamped events (audit trail /
-  // future HubSpot write-back queue). Optimistic local update, then persist.
+  // Save to the per-deal CS record + append timestamped events, then push any
+  // HubSpot-owned fields to HubSpot in real time via the Netlify Function
+  // (the browser never holds the HubSpot token).
+  const HS_PUSHABLE = ['kickoff_date', 'contact_name', 'contact_email', 'contact_phone', 'speed_lab_director']
   const saveCs = async (dealId, patch, events = []) => {
     const prevRow = csByDeal[dealId] || { deal_id: dealId }
     const actor = director?.name || director?.email || null
-    setCsByDeal(prev => ({ ...prev, [dealId]: { ...prevRow, ...patch, updated_by: actor } }))
+    setCsByDeal(prev => ({ ...prev, [dealId]: { ...prevRow, ...patch, updated_by: actor, updated_at: new Date().toISOString() } }))
     setSavingCs(true)
     try {
       const { error } = await supabase.from('onboarding_cs').upsert(
@@ -563,8 +569,32 @@ export default function Onboarding() {
       setCsByDeal(prev => ({ ...prev, [dealId]: prevRow })) // roll back optimistic update
       console.error('onboarding_cs save failed (did the 2026-06-12 migration run?)', e)
       alert('Save failed — run the 2026-06-12 onboarding execution migration in Supabase, then retry.')
-    } finally {
       setSavingCs(false)
+      return
+    }
+    setSavingCs(false)
+
+    // Real-time HubSpot push (fire-and-report; internal save already succeeded)
+    const changes = {}
+    HS_PUSHABLE.forEach(k => { if (k in patch) changes[k] = patch[k] })
+    if (!Object.keys(changes).length) return
+    setHsPush(prev => ({ ...prev, [dealId]: 'pushing' }))
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch('/.netlify/functions/hubspot-writeback', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ dealId, changes }),
+      })
+      const res = await r.json().catch(() => ({}))
+      if (r.ok && res.ok) {
+        setHsPush(prev => ({ ...prev, [dealId]: 'ok' }))
+        setCsByDeal(prev => ({ ...prev, [dealId]: { ...(prev[dealId] || {}), hs_pushed_at: new Date().toISOString() } }))
+      } else {
+        setHsPush(prev => ({ ...prev, [dealId]: res.error || (res.errors || []).join('; ') || `HTTP ${r.status}` }))
+      }
+    } catch (e) {
+      setHsPush(prev => ({ ...prev, [dealId]: String(e.message || e) }))
     }
   }
 
@@ -626,10 +656,12 @@ export default function Onboarding() {
         const weekly = (lab && weeklyByLab[lab]) || weeklyByDeal[a.deal_id] || []
         const last8 = weekly.slice(-8).map(w => ({ color: w.health_color, logins: w.logins_week, datapoints: w.data_pts_week, prs: w.prs_week, preCustomer: false }))
         const latest = weekly[weekly.length - 1]
-        const realDay = daysSince(a.contract_start_date)
         const doneSet = doneMap[a.deal_id] || EMPTY_SET
         const derived = deriveStage(catalog, doneSet)
         const cs = csByDeal[a.deal_id] || null
+        // Day-of-90 anchors on the explicit kick-off date when set (the journey
+        // starts at kick-off); falls back to HubSpot's contract_start_date.
+        const realDay = daysSince(cs?.kickoff_date || a.contract_start_date)
         // Manual stage override (set by a CSM in the dashboard) wins over the
         // checklist-derived stage. 'Auto' = no override row / null.
         const stageKey = cs?.stage_override || derived.stageKey
@@ -876,7 +908,7 @@ export default function Onboarding() {
               </div>
             </div>
             <div className="collapse-body">
-              {newCust.map(c => <ObCard key={c.dealId} c={c} catalog={catalog} open={openId === c.dealId} onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)} doneSet={c.doneSet} doneMeta={doneMetaMap[c.dealId]} onOpenTemplate={openTemplate} onSetDone={(k, v) => setDone(c.dealId, k, v)} onSaveCs={(patch, events) => saveCs(c.dealId, patch, events)} savingCs={savingCs} />)}
+              {newCust.map(c => <ObCard key={c.dealId} c={c} catalog={catalog} open={openId === c.dealId} onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)} doneSet={c.doneSet} doneMeta={doneMetaMap[c.dealId]} onOpenTemplate={openTemplate} onSetDone={(k, v) => setDone(c.dealId, k, v)} onSaveCs={(patch, events) => saveCs(c.dealId, patch, events)} savingCs={savingCs} hsPushState={hsPush[c.dealId]} />)}
             </div>
           </div>
         </div>
@@ -898,7 +930,7 @@ export default function Onboarding() {
           </div>
         ) : (
           <div className="lab-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {list.map(c => <ObCard key={c.dealId} c={c} catalog={catalog} open={openId === c.dealId} onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)} doneSet={c.doneSet} doneMeta={doneMetaMap[c.dealId]} onOpenTemplate={openTemplate} onSetDone={(k, v) => setDone(c.dealId, k, v)} onSaveCs={(patch, events) => saveCs(c.dealId, patch, events)} savingCs={savingCs} />)}
+            {list.map(c => <ObCard key={c.dealId} c={c} catalog={catalog} open={openId === c.dealId} onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)} doneSet={c.doneSet} doneMeta={doneMetaMap[c.dealId]} onOpenTemplate={openTemplate} onSetDone={(k, v) => setDone(c.dealId, k, v)} onSaveCs={(patch, events) => saveCs(c.dealId, patch, events)} savingCs={savingCs} hsPushState={hsPush[c.dealId]} />)}
           </div>
         )}
       </div>

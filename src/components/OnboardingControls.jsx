@@ -192,6 +192,8 @@ export function DetailsEditor({ c, cs, onSave, saving, onClose }) {
     v.notes = cs?.notes ?? ''
     return v
   })
+  // Synced = the last successful HubSpot push is at/after the last edit.
+  const hsSynced = cs?.hs_pushed_at && cs?.updated_at && new Date(cs.hs_pushed_at) >= new Date(cs.updated_at)
 
   const save = () => {
     const patch = {}, events = []
@@ -217,7 +219,9 @@ export function DetailsEditor({ c, cs, onSave, saving, onClose }) {
       <div className="ob-edit-grid">
         {EDIT_FIELDS.map(f => (
           <label key={f.key} className="ob-edit-field">
-            <span>{f.label}{cs?.[f.key] != null && <i className="ob-pending-hs" title="Edited in dashboard — not yet pushed to HubSpot">not in HubSpot yet</i>}</span>
+            <span>{f.label}{cs?.[f.key] != null && (hsSynced
+              ? <i className="ob-pending-hs synced" title="Pushed to HubSpot">synced to HubSpot</i>
+              : <i className="ob-pending-hs" title="Edited in dashboard — HubSpot push pending">not in HubSpot yet</i>)}</span>
             <input type={f.type || 'text'} value={vals[f.key]} onChange={e => setVals(p => ({ ...p, [f.key]: e.target.value }))} />
           </label>
         ))}
@@ -227,7 +231,7 @@ export function DetailsEditor({ c, cs, onSave, saving, onClose }) {
         <textarea rows={3} value={vals.notes} onChange={e => setVals(p => ({ ...p, notes: e.target.value }))} placeholder="Context the next teammate needs — goals, quirks, promises made…" />
       </label>
       <div className="ob-edit-actions">
-        <span className="ob-edit-hint">Saves internally + queues for HubSpot push (coming with write-back phase)</span>
+        <span className="ob-edit-hint">Saves internally + pushes contact/director/kick-off to HubSpot in real time · notes stay internal</span>
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}Save</button>
       </div>
