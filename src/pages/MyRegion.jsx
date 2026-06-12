@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
+import { daysSince, last8Weeks } from '../lib/metrics'
+import WeeklyMatrix from '../components/WeeklyMatrix'
 import {
   ArrowLeft, ChevronDown, Plus, Send, Loader2,
   TrendingUp, TrendingDown, Minus, Bell, CheckCircle,
@@ -386,14 +388,34 @@ export function LabCard({ snap, allHistory, viewingId, stage, score = null, acco
   }, [snap.lab_name])
 
   const loadAccount = useCallback(async () => {
-    if (accountProp !== undefined) { setAccount(accountProp); return }
-    if (!snap.lab_name) { setAccount(null); return }
-    const { data } = await supabase
-      .from('lab_accounts')
-      .select('*')
-      .eq('lab_name', snap.lab_name)
-      .maybeSingle()
-    setAccount(data || null)
+    let base = accountProp
+    if (base === undefined) {
+      if (!snap.lab_name) { setAccount(null); return }
+      const { data } = await supabase
+        .from('lab_accounts')
+        .select('*')
+        .eq('lab_name', snap.lab_name)
+        .maybeSingle()
+      base = data || null
+    }
+    if (!base) { setAccount(null); return }
+    // CANON (lib/metrics.js): CS dashboard edits (onboarding_cs) override the
+    // HubSpot-synced values everywhere, not just on the Onboarding page.
+    try {
+      const { data: cs } = base.deal_id
+        ? await supabase.from('onboarding_cs').select('*').eq('deal_id', base.deal_id).maybeSingle()
+        : { data: null }
+      setAccount({
+        ...base,
+        contact_name:       cs?.contact_name ?? base.contact_name,
+        contact_email:      cs?.contact_email ?? base.contact_email,
+        contact_phone:      cs?.contact_phone ?? base.contact_phone,
+        speed_lab_director: cs?.speed_lab_director ?? base.speed_lab_director,
+        kickoff_date:       cs?.kickoff_date ?? null,
+      })
+      return
+    } catch { /* fall through to unmerged */ }
+    setAccount(base)
   }, [snap.lab_name, accountProp])
 
   useEffect(() => {
@@ -514,6 +536,7 @@ export function LabCard({ snap, allHistory, viewingId, stage, score = null, acco
               ['ARR',              account?.arr_amount != null ? `$${Number(account.arr_amount).toLocaleString()}` : null],
               ['Payment',          account?.payment_status],
               ['Director',         account?.speed_lab_director],
+              ['Day of 90',        (() => { const d = daysSince(account?.kickoff_date || account?.contract_start_date); return d != null ? `${d} / 90${account?.kickoff_date ? ' (from kick-off)' : ''}` : null })()],
             ].map(([label, val]) => (
               <div className="contact-row" key={label}>
                 <Activity size={15} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
@@ -631,10 +654,10 @@ export function LabCard({ snap, allHistory, viewingId, stage, score = null, acco
             )}
           </div>
 
-          {/* ── Block 2: Weekly Activity grid ─────────────────────────── */}
+          {/* ── Block 2: Weekly Activity — canonical shared matrix ───────── */}
           <div className="detail-block">
             <h4><Zap size={14} />Weekly Activity · 8 wks</h4>
-            <ActivityGrid last8={last8} />
+            <WeeklyMatrix weeks={last8Weeks(last8)} />
           </div>
 
           {/* ── Block 3: Monthly Health Trend ─────────────────────────── */}

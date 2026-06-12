@@ -9,6 +9,7 @@ import {
   mergeOverrides, gatingKeys, kickoffComplete, transitionVariant, recapVariant, fillTokens,
 } from '../lib/onboardingCatalog'
 import { TTVPanel, StageControl, DetailsEditor, effectiveTtv, TTV_STATUS_META } from '../components/OnboardingControls'
+import WeeklyMatrix from '../components/WeeklyMatrix'
 import {
   Activity, Bell, ChevronDown, Mail, Phone, Zap, Check, Settings,
   CheckCircle, Send, Copy, ArrowRight, User, Loader2, CheckSquare, Square, Pencil, StickyNote,
@@ -141,45 +142,8 @@ function tier(metric, v) {
   if (metric === 'datapoints') return v >= 25 ? 3 : v >= 10 ? 2 : 1
   return v >= 4 ? 3 : v >= 2 ? 2 : 1 // prs
 }
-// Weekly matrix: numbers in every cell, colored by that week's official health
-// color (green = activity ≤7d · yellow 8–30d · orange 31–90d · red 90+d).
-// Rows: Session recaps, Logins, Data pts, Athletes, PRs.
-function ActivityMatrix({ weeks }) {
-  const slots = Array.from({ length: 8 }, (_, i) => weeks[i] || { preCustomer: true })
-  const ago = (i) => i === 7 ? 'this week' : `${7 - i}w ago`
-  const ROWS = [
-    { label: 'Recaps',   get: w => w.recaps },
-    { label: 'Logins',   get: w => w.logins },
-    { label: 'Data pts', get: w => w.datapoints },
-    { label: 'Athletes', get: w => w.athletes },
-    { label: 'PRs',      get: w => w.prs },
-  ]
-  return (
-    <>
-      <div className="wk2-matrix">
-        {ROWS.map(r => (
-          <div className="wk2-row" key={r.label}>
-            <span className="wk2-label">{r.label}</span>
-            {slots.map((wk, i) => {
-              const v = r.get(wk)
-              const cls = wk.preCustomer ? 'pre' : `hc-${wk.color || 'unknown'}`
-              return (
-                <span
-                  key={i}
-                  className={`wk2-cell ${cls}`}
-                  title={wk.preCustomer ? `${ago(i)} · before join` : `${ago(i)} · ${v != null ? v : 'no data'} ${r.label.toLowerCase()} · week color: ${wk.color || 'unknown'}`}
-                >
-                  {wk.preCustomer ? '·' : (v != null ? v : '—')}
-                </span>
-              )
-            })}
-          </div>
-        ))}
-      </div>
-      <div className="wk2-foot">8 wks → now · cell color = that week's activity level (green ≤7d · yellow 8–30d · orange 31–90d · red 90+d)</div>
-    </>
-  )
-}
+// Weekly activity now renders via the shared components/WeeklyMatrix.jsx —
+// the canonical display used by every page. Do not re-implement locally.
 
 // ─── Date formatting for completion stamps ────────────────────────────────────
 function fmtStamp(ts) {
@@ -390,7 +354,7 @@ function ObCard({ c, catalog, open, onToggle, doneSet, doneMeta, onOpenTemplate,
               <div className="ob-actcard">
                 <div className="ob-actcard-title">Weekly Activity · 8w</div>
                 {c.weeks.length > 0
-                  ? <ActivityMatrix weeks={c.weeks} />
+                  ? <WeeklyMatrix weeks={c.weeks} />
                   : <p style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>No weekly activity yet — appears once platform usage flows.</p>}
               </div>
               <div className="ob-actcard">

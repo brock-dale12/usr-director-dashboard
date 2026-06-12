@@ -92,7 +92,7 @@ export default function MyCustomers() {
     let cancelled = false
     async function load() {
       setLoading(true)
-      const [acctRes, allSnaps, monthRows, prefsRes, commsRes] = await Promise.all([
+      const [acctRes, allSnaps, monthRows, prefsRes, commsRes, csRes] = await Promise.all([
         supabase.from('lab_accounts').select('*'),
         fetchAllRows('weekly_health_snapshots'),
         fetchAllRows('monthly_health_snapshots', 'lab_name, deal_id, month, health_score'),
@@ -100,6 +100,7 @@ export default function MyCustomers() {
           ? supabase.from('dashboard_prefs').select('default_view').eq('director_id', director.id).maybeSingle()
           : Promise.resolve({ data: null }),
         supabase.from('customer_comms').select('*').order('logged_at', { ascending: false }).then(r => r, () => ({ data: [] })),
+        supabase.from('onboarding_cs').select('*').then(r => r, () => ({ data: [] })),
       ])
       if (cancelled) return
 
@@ -109,7 +110,22 @@ export default function MyCustomers() {
         if (m.deal_id && (!seenDeal[m.deal_id] || m.month > seenDeal[m.deal_id])) { seenDeal[m.deal_id] = m.month; sMapDeal[m.deal_id] = m.health_score }
       })
 
-      setAccounts(acctRes.data || [])
+      // CANON (lib/metrics.js): merge CS dashboard edits (onboarding_cs) over
+      // HubSpot-synced values so lists, filters, and cards all agree.
+      const csMap = {}
+      ;((csRes && csRes.data) || []).forEach(r => { csMap[r.deal_id] = r })
+      const merged = (acctRes.data || []).map(a => {
+        const cs = csMap[a.deal_id]
+        return cs ? {
+          ...a,
+          contact_name:       cs.contact_name ?? a.contact_name,
+          contact_email:      cs.contact_email ?? a.contact_email,
+          contact_phone:      cs.contact_phone ?? a.contact_phone,
+          speed_lab_director: cs.speed_lab_director ?? a.speed_lab_director,
+          kickoff_date:       cs.kickoff_date ?? null,
+        } : a
+      })
+      setAccounts(merged)
       setSnaps(allSnaps)
       setScoreMap(sMap)
       setScoreMapDeal(sMapDeal)
