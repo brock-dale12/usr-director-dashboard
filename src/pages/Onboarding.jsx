@@ -14,7 +14,7 @@ import FilterDropdown, { splitHw } from '../components/FilterDropdown'
 import {
   Activity, Bell, ChevronDown, Mail, Phone, Zap, Check, Settings,
   CheckCircle, Send, Copy, ArrowRight, User, Loader2, CheckSquare, Square, Pencil, StickyNote,
-  GripVertical, LayoutGrid, Layers, ListChecks, AlertTriangle, RefreshCw, Star, X, Trophy,
+  GripVertical, LayoutGrid, Layers, ListChecks, AlertTriangle, RefreshCw, Star, X, Trophy, Filter,
 } from 'lucide-react'
 
 // ─── Stage presentation: accent color + one-line description per journey stage ─
@@ -584,6 +584,7 @@ export default function Onboarding() {
   const [savingCs, setSavingCs] = useState(false)
   const [hsPush, setHsPush] = useState({})             // dealId -> 'pushing' | 'ok' | error string
   const [filters, setFilters] = useState(EMPTY_FILTERS) // multi-select, persisted
+  const [filtersOpen, setFiltersOpen] = useState(false) // advanced-filters side drawer
   const [heroFilter, setHeroFilter] = useState(null)    // { kind, value } — filters the list only
   const [saveState, setSaveState] = useState('idle')    // idle | saving | saved
   const prefsApplied = useRef(false)
@@ -1111,12 +1112,12 @@ export default function Onboarding() {
           <div className="topbar-eyebrow">USR Customer Success · {scoped.length} in onboarding</div>
           <h1 className="topbar-title">Onboarding</h1>
         </div>
-        <div className="topbar-meta" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="topbar-meta ob-topbar-actions">
           <div className="ob-sync">
+            <span className="ob-sync-stamp">{fmtSync(lastSync)}</span>
             <button className="btn btn-outline" onClick={refreshFromHubspot} disabled={syncing} title="Pull the latest deals from HubSpot into the onboarding view">
               {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}Refresh now
             </button>
-            <span className="ob-sync-stamp">{fmtSync(lastSync)}</span>
           </div>
           {director?.is_admin && (
             <button className="btn btn-outline" onClick={() => setEditorOpen(true)}>
@@ -1232,13 +1233,8 @@ export default function Onboarding() {
             <button className={pipelineView === 'focus' ? 'active' : ''} onClick={() => setPipelineView('focus')}><ListChecks size={14} />Focus Queue</button>
           </div>
           <div className="ob-pl-right">
-            <FilterDropdown label="Deal Owner"         options={opts.dealOwner}        selected={filters.dealOwner}        onChange={v => setFilter('dealOwner', v)} />
-            <FilterDropdown label="Product"            options={opts.product}          selected={filters.product}          onChange={v => setFilter('product', v)} />
-            <FilterDropdown label="Customer Segment"   options={opts.customerSegment}  selected={filters.customerSegment}  onChange={v => setFilter('customerSegment', v)} />
-            <FilterDropdown label="Speed Lab Director" options={opts.speedLabDirector} selected={filters.speedLabDirector} onChange={v => setFilter('speedLabDirector', v)} />
-            <FilterDropdown label="Hardware"           options={opts.hardware}         selected={filters.hardware}         onChange={v => setFilter('hardware', v)} />
-            <button className={`mc-save-btn ${saveState === 'saved' ? 'saved' : ''}`} onClick={saveDefaultView} disabled={saveState === 'saving'} title="Save these filters as your default Onboarding view">
-              {saveState === 'saved' ? <><Check size={14} />Saved</> : <><Star size={14} />Save default</>}
+            <button className={`ob-filter-trigger ${activeFilterCount > 0 ? 'on' : ''}`} onClick={() => setFiltersOpen(true)} title="Open filters">
+              <Filter size={14} />Filters{activeFilterCount > 0 && <span className="ob-filter-trigger-badge">{activeFilterCount}</span>}
             </button>
             <div className="ob-pl-sort">
               <label>Sort</label>
@@ -1445,6 +1441,36 @@ export default function Onboarding() {
           onMarkDone={() => { setDone(modal.customer.dealId, modal.task.key, true); setModal(null) }}
           onClose={() => setModal(null)}
         />
+      )}
+
+      {/* Advanced filters — right-side drawer with uniform dropdowns */}
+      {filtersOpen && (
+        <div className="ob-fd-overlay" onClick={() => setFiltersOpen(false)}>
+          <aside className="ob-filters-drawer" onClick={e => e.stopPropagation()}>
+            <div className="ob-fd-head">
+              <span>Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}</span>
+              <button className="ob-modal-x" onClick={() => setFiltersOpen(false)} aria-label="Close">✕</button>
+            </div>
+            <div className="ob-fd-body scrollbar-thin">
+              <label className="ob-fd-field"><span>Deal Owner</span>
+                <FilterDropdown label="Deal Owner" options={opts.dealOwner} selected={filters.dealOwner} onChange={v => setFilter('dealOwner', v)} /></label>
+              <label className="ob-fd-field"><span>Product</span>
+                <FilterDropdown label="Product" options={opts.product} selected={filters.product} onChange={v => setFilter('product', v)} /></label>
+              <label className="ob-fd-field"><span>Customer Segment</span>
+                <FilterDropdown label="Customer Segment" options={opts.customerSegment} selected={filters.customerSegment} onChange={v => setFilter('customerSegment', v)} /></label>
+              <label className="ob-fd-field"><span>Speed Lab Director</span>
+                <FilterDropdown label="Speed Lab Director" options={opts.speedLabDirector} selected={filters.speedLabDirector} onChange={v => setFilter('speedLabDirector', v)} /></label>
+              <label className="ob-fd-field"><span>Hardware</span>
+                <FilterDropdown label="Hardware" options={opts.hardware} selected={filters.hardware} onChange={v => setFilter('hardware', v)} /></label>
+            </div>
+            <div className="ob-fd-foot">
+              <button className="ob-clearfilters" onClick={clearFilters} disabled={activeFilterCount === 0 && !heroFilter}>Clear all</button>
+              <button className={`mc-save-btn ${saveState === 'saved' ? 'saved' : ''}`} onClick={saveDefaultView} disabled={saveState === 'saving'}>
+                {saveState === 'saved' ? <><Check size={14} />Saved</> : <><Star size={14} />Save as default</>}
+              </button>
+            </div>
+          </aside>
+        </div>
       )}
 
       {editorOpen && (
