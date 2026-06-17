@@ -17,6 +17,13 @@ export default function WeeklyMatrix({ weeks }) {
   return (
     <>
       <div className="wk2-matrix">
+        {/* Column header — marks the most recent (rightmost) week */}
+        <div className="wk2-row wk2-head">
+          <span className="wk2-label" />
+          {slots.map((_, i) => (
+            <span key={i} className={`wk2-hcell ${i === 7 ? 'last' : ''}`}>{i === 7 ? 'LAST WK' : ''}</span>
+          ))}
+        </div>
         {ROWS.map(r => (
           <div className="wk2-row" key={r.label}>
             <span className="wk2-label">{r.label}</span>

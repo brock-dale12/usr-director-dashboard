@@ -59,6 +59,8 @@ export function TTVPanel({ c, cs, synced, onSave, saving }) {
   const meta = TTV_STATUS_META[t.status] || TTV_STATUS_META.not_started
   const [editDate, setEditDate] = useState(false)
   const [dateVal, setDateVal] = useState(t.kickoffDate || '')
+  const [editSess, setEditSess] = useState(false)   // type the recap count directly
+  const [sessVal, setSessVal] = useState('')
 
   const saveDate = () => {
     if (!dateVal) return
@@ -69,14 +71,19 @@ export function TTVPanel({ c, cs, synced, onSave, saving }) {
     setEditDate(false)
   }
 
-  const bumpSessions = (delta) => {
-    const base = t.sessionsSource === 'manual' ? (cs?.sessions_manual ?? 0) : (t.sessions ?? 0)
-    const next = Math.max(0, base + delta)
+  // Set the manual recap count to an explicit value (typed or stepped).
+  const setSessions = (raw) => {
+    const next = Math.max(0, Math.floor(Number(raw) || 0))
     onSave(
       { sessions_manual: next },
       [{ kind: 'ttv_mark', field: 'sessions_manual', old_value: String(cs?.sessions_manual ?? ''), new_value: String(next) }],
     )
   }
+  const bumpSessions = (delta) => {
+    const base = t.sessionsSource === 'manual' ? (cs?.sessions_manual ?? 0) : (t.sessions ?? 0)
+    setSessions(base + delta)
+  }
+  const commitSess = () => { if (sessVal !== '') setSessions(sessVal); setEditSess(false) }
 
   const mark = (val) => {
     const next = cs?.ttv_status_override === val ? null : val // click again to un-mark
@@ -132,7 +139,18 @@ export function TTVPanel({ c, cs, synced, onSave, saving }) {
             <span className="ttv-sess-note">Sessions completed (manual until platform sync)</span>
             <span className="ttv-stepper">
               <button className="ob-icon-btn" onClick={() => bumpSessions(-1)} disabled={saving || (t.sessions ?? 0) <= 0}><Minus size={13} /></button>
-              <b>{t.sessions ?? 0}</b>
+              {editSess ? (
+                <input
+                  className="ttv-sess-input" type="number" min="0" inputMode="numeric" autoFocus
+                  value={sessVal}
+                  onChange={e => setSessVal(e.target.value)}
+                  onBlur={commitSess}
+                  onKeyDown={e => { if (e.key === 'Enter') commitSess(); if (e.key === 'Escape') setEditSess(false) }}
+                />
+              ) : (
+                <b className="ttv-sess-val" title="Click to type the recap count"
+                   onClick={() => { setSessVal(String(t.sessions ?? 0)); setEditSess(true) }}>{t.sessions ?? 0}</b>
+              )}
               <button className="ob-icon-btn" onClick={() => bumpSessions(1)} disabled={saving}><Plus size={13} /></button>
             </span>
           </span>

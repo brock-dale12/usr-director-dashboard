@@ -1703,3 +1703,69 @@ body {
 .ob-drawer-modal { background: #fff; border-radius: 14px; width: 100%; max-width: 860px; box-shadow: 0 24px 60px rgba(0,0,0,0.3); overflow: hidden; }
 .ob-drawer-modal-head { display: flex; align-items: center; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--border); }
 .ob-drawer-modal-name { font-family: var(--font-display); font-weight: 800; font-size: 20px; color: var(--usr-black); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Onboarding page edits — 2026-06-17
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* TTV: click-to-type recap count */
+.ttv-sess-val { cursor: pointer; border-bottom: 1px dashed var(--border-strong); }
+.ttv-sess-val:hover { color: var(--usr-pink); }
+.ttv-sess-input { width: 54px; font-family: var(--font-display); font-weight: 800; font-size: 16px; text-align: center; border: 1px solid var(--usr-pink); border-radius: 6px; padding: 2px 4px; }
+
+/* Topbar: Refresh-now + last-synced badge */
+.ob-sync { display: inline-flex; align-items: center; gap: 8px; }
+.ob-sync-stamp { font-size: 11px; color: var(--fg-subtle); font-family: var(--font-display); font-weight: 700; letter-spacing: 0.03em; white-space: nowrap; }
+
+/* Hero metrics → clickable filters */
+.ttv-fchip { background: none; border: 1px solid transparent; border-radius: 8px; padding: 4px 9px; cursor: pointer; text-align: left; transition: background var(--dur-fast), border-color var(--dur-fast); }
+.ttv-fchip:hover { background: var(--bg-alt); }
+.ttv-fchip.on { border-color: var(--usr-pink); background: var(--st-red-bg); }
+.ob-wact-chip { cursor: pointer; transition: border-color var(--dur-fast), box-shadow var(--dur-fast); text-align: left; }
+.ob-wact-chip:hover { border-color: var(--border-strong); }
+.ob-wact-chip.on { border-color: var(--usr-pink); box-shadow: 0 0 0 1px var(--usr-pink) inset; }
+.ob-hero-click { cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; transition: box-shadow var(--dur-fast); }
+.ob-hero-click:hover { box-shadow: 0 0 0 2px rgba(236,54,66,0.4); }
+.ob-hero-click.on { box-shadow: 0 0 0 2px var(--usr-pink); }
+
+/* Pipeline head: center the view switcher between title (left) and filters (right) */
+.ob-pl-title { flex: 1 1 0; }
+.ob-pl-right { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.ob-pl-right .ob-pl-sort { margin-left: 0; }
+
+/* Active-filter summary row */
+.ob-active-filters { display: flex; align-items: center; gap: 10px; margin: -6px 0 14px; flex-wrap: wrap; }
+.ob-chipfilter.hero { display: inline-flex; align-items: center; gap: 6px; background: var(--usr-black); color: #fff; border: 0; border-radius: 999px; padding: 5px 10px 5px 12px; font-family: var(--font-display); font-weight: 700; font-size: 11px; letter-spacing: 0.04em; cursor: pointer; }
+.ob-chipfilter.hero:hover { background: var(--usr-pink); }
+.ob-active-count { font-size: 12px; color: var(--fg-subtle); }
+.ob-clearfilters { background: none; border: 0; color: var(--usr-pink); font-weight: 700; font-size: 12px; cursor: pointer; }
+
+/* Kanban card: monthly health score (above TTV) + open-task / clear tag */
+.ob-kcard-score { display: flex; align-items: center; gap: 6px; margin-top: 9px; font-size: 11px; font-family: var(--font-display); font-weight: 700; color: var(--fg-subtle); text-transform: uppercase; letter-spacing: 0.04em; }
+.ob-kcard-score-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.ob-kcard-score b { font-size: 15px; }
+.ob-kcard-score-suf { color: var(--fg-subtle); font-weight: 400; }
+.ob-tag-clear { display: inline-flex; align-items: center; gap: 3px; background: var(--st-green-bg); color: #0B6B43; font-family: var(--font-display); font-weight: 700; font-size: 10px; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 5px; }
+
+/* DONE (finish onboarding) button accent */
+.ob-adv-btn.done { display: inline-flex; align-items: center; gap: 5px; background: var(--st-green); }
+.ob-adv-btn.done:hover { background: #169a5f; }
+
+/* Completed-onboarding footer */
+.ob-completed { margin-top: 22px; border-top: 1px dashed var(--border-strong); padding-top: 14px; }
+.ob-completed-head { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; cursor: pointer; font-family: var(--font-display); font-weight: 800; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-muted); }
+.ob-completed-head:hover { color: var(--usr-black); }
+.ob-completed-chev { display: inline-flex; transition: transform var(--dur-fast); }
+.ob-completed-chev.open { transform: rotate(180deg); }
+.ob-completed-body { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.ob-completed-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--bg-alt); border-radius: 8px; }
+.ob-completed-name { font-family: var(--font-display); font-weight: 700; font-size: 13px; color: var(--usr-black); flex: 1; min-width: 0; }
+.ob-completed-when { font-size: 11px; color: var(--fg-subtle); white-space: nowrap; }
+.ob-completed-reopen { background: #fff; border: 1px solid var(--border-strong); border-radius: 6px; padding: 4px 10px; font-family: var(--font-display); font-weight: 700; font-size: 11px; cursor: pointer; color: var(--usr-black); }
+.ob-completed-reopen:hover { border-color: var(--usr-pink); color: var(--usr-pink); }
+.ob-completed-foot { font-size: 11px; color: var(--fg-subtle); margin-top: 6px; }
+
+/* WeeklyMatrix: most-recent-week header marker */
+.wk2-head { margin-bottom: 2px; }
+.wk2-hcell { font-family: var(--font-display); font-weight: 800; font-size: 8px; letter-spacing: 0.03em; color: var(--fg-subtle); text-align: center; display: flex; align-items: center; justify-content: center; }
+.wk2-hcell.last { color: var(--usr-pink); }

@@ -10,10 +10,11 @@ import {
 } from '../lib/onboardingCatalog'
 import { TTVPanel, StageControl, DetailsEditor, effectiveTtv, TTV_STATUS_META } from '../components/OnboardingControls'
 import WeeklyMatrix from '../components/WeeklyMatrix'
+import FilterDropdown, { splitHw } from '../components/FilterDropdown'
 import {
   Activity, Bell, ChevronDown, Mail, Phone, Zap, Check, Settings,
   CheckCircle, Send, Copy, ArrowRight, User, Loader2, CheckSquare, Square, Pencil, StickyNote,
-  GripVertical, LayoutGrid, Layers, ListChecks, AlertTriangle,
+  GripVertical, LayoutGrid, Layers, ListChecks, AlertTriangle, RefreshCw, Star, X, Trophy,
 } from 'lucide-react'
 
 // ─── Stage presentation: accent color + one-line description per journey stage ─
@@ -58,6 +59,24 @@ const EARLY_STAGES = ['On Deck', 'Level Set', 'First 30 Days', 'First 90 Days']
 const HUBSPOT_FALLBACK_DAY = { 'On Deck': 1, 'Level Set': 3, 'First 30 Days': 20, 'First 90 Days': 60 }
 
 const EMPTY_SET = new Set()
+
+// Multi-select filters (mirror My Customers). AND across categories, OR within.
+const EMPTY_FILTERS = { dealOwner: [], product: [], customerSegment: [], speedLabDirector: [], hardware: [] }
+
+// Human label for an active hero-metric filter (for the clearable chip).
+const HERO_LABELS = {
+  ttv: { passed: 'TTV: Passed', in_progress: 'TTV: In progress', failed: 'TTV: Failed' },
+  activity: { green: 'Activity: Active', yellow: 'Activity: At risk', orange: 'Activity: Urgent', red: 'Activity: Critical' },
+  health: { '30_60': 'Health: Days 30–60', '60_90': 'Health: Days 60–90' },
+}
+
+// Monthly health score (0–9) → accent color, for the Kanban score chip.
+const scoreColor = (s) =>
+  s == null ? 'var(--fg-subtle)'
+    : s >= 7 ? 'var(--st-green)'
+    : s >= 4 ? 'var(--st-yellow)'
+    : s >= 2 ? 'var(--st-orange)'
+    : 'var(--st-red)'
 
 // Current journey stage = first stage whose GATING tasks aren't all done.
 function deriveStage(catalog, doneSet) {
@@ -111,6 +130,63 @@ function HealthTrend({ values, color = '#EC3642' }) {
       <path d={d} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r="2.6" fill={color} />
     </svg>
+  )
+}
+
+// ─── Health trend area chart — SAME UI as the My Customers view ──────────────
+// Buckets weekly snapshots into 6 monthly color-rank slots (1–4) and draws the
+// gradient area chart. Mirrors HealthTrendChart in MyRegion.jsx; uses
+// STATUS_COLORS (shared) for the line/fill. `history` = weekly snapshot rows
+// (any order) carrying week_start + health_color.
+function HealthArea({ history }) {
+  const COLOR_RANK = { green: 4, yellow: 3, orange: 2, red: 1, unknown: 1 }
+  const MONTH_LABELS = ['6mo', '5mo', '4mo', '3mo', '2mo', 'Now']
+  const rows = history || []
+  const now = new Date()
+  const slots = Array.from({ length: 6 }, (_, i) => {
+    const mo = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+    const moStr = mo.toISOString().slice(0, 7)
+    const weeksInMonth = rows.filter(s => s.week_start && s.week_start.startsWith(moStr))
+    if (!weeksInMonth.length) return null
+    return weeksInMonth.reduce((a, s) => a + (COLOR_RANK[s.health_color] ?? 1), 0) / weeksInMonth.length
+  })
+  const hasData = slots.some(v => v !== null)
+  if (!hasData) {
+    return (
+      <div style={{ height: 96, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 11, color: 'var(--fg-subtle)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Builds after 2+ months</span>
+      </div>
+    )
+  }
+  const filled = slots.map((v, i) => v ?? (i > 0 ? slots.slice(0, i).reverse().find(x => x !== null) ?? 1 : 1))
+  const w = 300, h = 96
+  const pts = filled.map((v, i) => {
+    const x = (i / (filled.length - 1)) * (w - 8) + 4
+    const y = h - 8 - ((v - 1) / 3) * (h - 20)
+    return [x, y]
+  })
+  const line = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ')
+  const area = line + ` L ${pts[pts.length - 1][0].toFixed(1)} ${h} L ${pts[0][0].toFixed(1)} ${h} Z`
+  const latest = rows.reduce((m, s) => (!m || (s.week_start || '') > (m.week_start || '') ? s : m), null)
+  const lastColor = STATUS_COLORS[latest?.health_color || 'unknown']
+  return (
+    <div className="trend-wrap">
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: 96, display: 'block' }}>
+        <defs>
+          <linearGradient id="ob-trend-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lastColor} stopOpacity="0.22" />
+            <stop offset="100%" stopColor={lastColor} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#ob-trend-grad)" />
+        <path d={line} fill="none" stroke={lastColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        {pts.map((p, i) => (
+          <circle key={i} cx={p[0]} cy={p[1]} r={i === pts.length - 1 ? 3.5 : 2}
+            fill={i === pts.length - 1 ? lastColor : '#fff'} stroke={lastColor} strokeWidth="1.5" />
+        ))}
+      </svg>
+      <div className="trend-foot">{MONTH_LABELS.map((m, i) => <span key={i}>{m}</span>)}</div>
+    </div>
   )
 }
 
@@ -323,11 +399,16 @@ function decorateCard(c, catalog) {
 // ─── The expandable drawer (contact, activity/health, journey + task checklist) ─
 // Extracted so every pipeline view (Smart Stack, Kanban, Focus Queue) opens the
 // SAME rich detail — the place the actual CS work happens.
-function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState }) {
+function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState, scrollToTasks }) {
   const nextLabel = c.graduated ? null : (OB_STAGES[OB_INDEX[c.stageKey] + 1]?.label || null)
   const [editOpen, setEditOpen] = useState(false)
   const [viewStage, setViewStage] = useState(null) // null = follow the customer's current stage
   const viewKey = viewStage || (c.graduated ? 'qbr' : c.stageKey)
+  const tasksRef = useRef(null)
+  // "Start tasks" (Focus Queue) opens the card scrolled to the task checklist.
+  useEffect(() => {
+    if (scrollToTasks && tasksRef.current) tasksRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [scrollToTasks])
 
   return (
         <div className="ob-detail">
@@ -368,18 +449,18 @@ function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone
                   : <p style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>No weekly activity yet — appears once platform usage flows.</p>}
               </div>
               <div className="ob-actcard">
-                <div className="ob-actcard-title">Health Trend</div>
+                <div className="ob-actcard-title">Monthly Health Trend</div>
                 <div className="trend-now">
                   <span className="v" style={{ color: 'var(--usr-pink)' }}>{c.healthScore != null ? c.healthScore : '—'}<span style={{ fontSize: 16, color: 'var(--fg-subtle)' }}>/9</span></span>
                 </div>
-                <HealthTrend values={c.healthTrend} color="#EC3642" />
+                <HealthArea history={c.healthHistory} />
                 <div className="ob-actcard-foot">{c.athletes ?? '—'} athletes (30d) · {c.prs ?? '—'} PRs (8w)</div>
               </div>
             </div>
           </div>
 
           {/* 3. Journey + tasks — red-dot timeline drives the task list below */}
-          <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
+          <div className="detail-block" ref={tasksRef} style={{ gridColumn: '1 / -1' }}>
             <h4>
               <Activity size={14} />90-Day Journey · {c.graduated ? 'Graduated' : OB_LABEL[c.stageKey]}
               {!c.graduated && nextLabel && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'none', letterSpacing: 0 }}>complete required steps → {nextLabel}</span>}
@@ -419,13 +500,13 @@ function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone
 
 // ─── Full-width pipeline card — Smart Stack rows + Focus Queue ─────────────────
 // Drag to move stage; click anywhere (except the grip/advance) to open the drawer.
-function PipelineCard({ c, d, open, onToggle, onAdvance, onDragStart, children }) {
+function PipelineCard({ c, d, open, onToggle, onAdvance, onComplete, onDragStart, focusMode, onStartTasks, children }) {
   const edge = d.task ? (d.task.kind === 'red' ? 'var(--st-red)' : 'var(--st-orange)') : 'transparent'
   return (
     <div className={`ob-pcard ${d.needsAction ? 'need' : ''} ${open ? 'open' : ''}`}>
       <div className="ob-pcard-row" draggable onDragStart={onDragStart} onClick={onToggle} style={{ borderLeftColor: edge }}>
         <span className="ob-pcard-grip" title="Drag to move stage"><GripVertical size={16} /></span>
-        <span className="status-dot" style={{ background: STATUS_COLORS[c.healthColor || 'unknown'] }} />
+        <span className="status-dot" style={{ background: STATUS_COLORS[c.healthColor || 'unknown'] }} title="Weekly activity" />
         <div className="ob-pcard-main">
           <div className="ob-pcard-namerow">
             <span className="ob-pcard-name">{c.name}</span>
@@ -437,7 +518,13 @@ function PipelineCard({ c, d, open, onToggle, onAdvance, onDragStart, children }
         </div>
         <div className="ob-pcard-day">{c.day != null ? c.day : '—'}<span> /90</span></div>
         <div className="ob-pcard-chip" style={{ color: d.chipColor, borderColor: d.chipColor }}>{d.chipText}</div>
-        <button className="ob-adv-btn" onClick={e => { e.stopPropagation(); onAdvance() }}>{d.next ? 'ADVANCE →' : '✓ DONE'}</button>
+        {focusMode ? (
+          <button className="ob-adv-btn" onClick={e => { e.stopPropagation(); onStartTasks() }}><ListChecks size={14} />Start tasks</button>
+        ) : d.next ? (
+          <button className="ob-adv-btn" onClick={e => { e.stopPropagation(); onAdvance() }}>ADVANCE →</button>
+        ) : (
+          <button className="ob-adv-btn done" onClick={e => { e.stopPropagation(); onComplete() }} title="Finish onboarding — moves to My Customers"><Trophy size={14} />DONE</button>
+        )}
         <span className={`ob-pcard-chev ${open ? 'open' : ''}`}><ChevronDown size={18} /></span>
       </div>
       {open && children}
@@ -446,20 +533,33 @@ function PipelineCard({ c, d, open, onToggle, onAdvance, onDragStart, children }
 }
 
 // ─── Compact Kanban card — drag between columns; click opens the drawer modal ──
-function KanbanCard({ c, d, onOpen, onAdvance, onDragStart }) {
+function KanbanCard({ c, d, onOpen, onAdvance, onComplete, onDragStart }) {
   const edge = d.task ? (d.task.kind === 'red' ? 'var(--st-red)' : 'var(--st-orange)') : 'var(--border)'
   return (
     <div className="ob-kcard" draggable onDragStart={onDragStart} onClick={onOpen} style={{ borderLeftColor: edge }}>
       <div className="ob-kcard-top">
-        <span className="status-dot" style={{ background: STATUS_COLORS[c.healthColor || 'unknown'] }} />
+        {/* Dot = weekly activity color */}
+        <span className="status-dot" style={{ background: STATUS_COLORS[c.healthColor || 'unknown'] }} title="Weekly activity" />
         <span className="ob-kcard-name">{c.name}</span>
-        {c.isNew && <span className="ob-tag-new">NEW</span>}
+        {/* Where "NEW" used to be: count of still-open tasks for this customer */}
+        {d.pending > 0
+          ? <span className="ob-tag-step" title="Open onboarding tasks">{d.pending} OPEN</span>
+          : <span className="ob-tag-clear" title="No open tasks"><Check size={11} />CLEAR</span>}
       </div>
       {d.task && <div><span className={`ob-tag-task ${d.task.kind}`} style={{ marginTop: 8 }}>{d.task.text}</span></div>}
       <div className="ob-kcard-meta">{d.meta || '—'}</div>
+      {/* Most recent monthly health score — sits above the TTV metric */}
+      <div className="ob-kcard-score">
+        <span className="ob-kcard-score-dot" style={{ background: scoreColor(c.healthScore) }} />
+        <span className="ob-kcard-score-lab">Health</span>
+        <b style={{ color: scoreColor(c.healthScore) }}>{c.healthScore != null ? c.healthScore : '—'}</b>
+        <span className="ob-kcard-score-suf">/9</span>
+      </div>
       <div className="ob-kcard-foot">
         <span className="ob-kcard-chip" style={{ color: d.chipColor }}>{d.chipText}</span>
-        <button className="ob-adv-btn sm" onClick={e => { e.stopPropagation(); onAdvance() }}>{d.next ? 'ADVANCE →' : '✓'}</button>
+        {d.next
+          ? <button className="ob-adv-btn sm" onClick={e => { e.stopPropagation(); onAdvance() }}>ADVANCE →</button>
+          : <button className="ob-adv-btn sm done" onClick={e => { e.stopPropagation(); onComplete() }} title="Finish onboarding — moves to My Customers">✓ DONE</button>}
       </div>
     </div>
   )
@@ -483,15 +583,21 @@ export default function Onboarding() {
   const [csByDeal, setCsByDeal] = useState({})         // dealId -> onboarding_cs row
   const [savingCs, setSavingCs] = useState(false)
   const [hsPush, setHsPush] = useState({})             // dealId -> 'pushing' | 'ok' | error string
-  const [ownerEmail, setOwnerEmail] = useState(null)
-  const [filter, setFilter] = useState(null)
+  const [filters, setFilters] = useState(EMPTY_FILTERS) // multi-select, persisted
+  const [heroFilter, setHeroFilter] = useState(null)    // { kind, value } — filters the list only
+  const [saveState, setSaveState] = useState('idle')    // idle | saving | saved
+  const prefsApplied = useRef(false)
   const [openId, setOpenId] = useState(null)
+  const [startTasksId, setStartTasksId] = useState(null) // Focus Queue → open scrolled to tasks
   const [modal, setModal] = useState(null)        // { customer, task, recVar }
   const [editorOpen, setEditorOpen] = useState(false)
   const [pipelineView, setPipelineView] = useState('stack') // stack | board | focus
   const [sortMode, setSortMode] = useState('priority')       // priority | health | days
   const [expandedBuckets, setExpandedBuckets] = useState({ handoff: true })
   const [focusStage, setFocusStage] = useState('handoff')
+  const [completedOpen, setCompletedOpen] = useState(false)
+  const [lastSync, setLastSync] = useState(undefined)   // undefined = loading, null = never, string = ISO
+  const [syncing, setSyncing] = useState(false)
   const dragId = useRef(null)
 
   const catalog = useMemo(() => mergeOverrides(overrides), [overrides])
@@ -505,7 +611,7 @@ export default function Onboarding() {
     let cancelled = false
     async function load() {
       setLoading(true)
-      const [acctRes, allSnaps, monthRows, progRes, ttvRes, tplRes, csRes] = await Promise.all([
+      const [acctRes, allSnaps, monthRows, progRes, ttvRes, tplRes, csRes, prefsRes, syncRes] = await Promise.all([
         supabase.from('lab_accounts').select('*'),
         fetchAllRows('weekly_health_snapshots'),
         fetchAllRows('monthly_health_snapshots', 'lab_name, deal_id, month, health_score'),
@@ -513,6 +619,10 @@ export default function Onboarding() {
         supabase.from('onboarding_ttv').select('deal_id, status, days_to_five, recaps_in_window'),
         supabase.from('onboarding_templates').select('*'),
         supabase.from('onboarding_cs').select('*'),
+        director?.id
+          ? supabase.from('dashboard_prefs').select('onboarding_view').eq('director_id', director.id).maybeSingle().then(r => r, () => ({ data: null }))
+          : Promise.resolve({ data: null }),
+        supabase.from('sync_runs').select('ran_at').eq('source', 'hubspot-sync').order('ran_at', { ascending: false }).limit(1).then(r => r, () => ({ data: null })),
       ])
       if (cancelled) return
       setAccounts(acctRes.data || [])
@@ -564,11 +674,20 @@ export default function Onboarding() {
         ;(csRes.data || []).forEach(r => { m[r.deal_id] = r })
         setCsByDeal(m)
       }
+
+      // Apply this director's saved Onboarding view, else default to "my deals".
+      if (!prefsApplied.current) {
+        const view = prefsRes && prefsRes.data && prefsRes.data.onboarding_view
+        if (view && view.filters) setFilters({ ...EMPTY_FILTERS, ...view.filters })
+        else if (director?.email) setFilters({ ...EMPTY_FILTERS, dealOwner: [director.email.toLowerCase()] })
+        prefsApplied.current = true
+      }
+      setLastSync(syncRes?.data?.[0]?.ran_at ?? null)
       setLoading(false)
     }
     load()
     return () => { cancelled = true }
-  }, [])
+  }, [director])
 
   // Save to the per-deal CS record + append timestamped events, then push any
   // HubSpot-owned fields to HubSpot in real time via the Netlify Function
@@ -675,7 +794,9 @@ export default function Onboarding() {
 
   const cohort = useMemo(() => {
     return accounts
-      .filter(a => EARLY_STAGES.includes(a.deal_stage_label) && a.is_returning !== true)
+      // Early-stage, non-returning, and NOT marked onboarding-complete (Done).
+      // Completed customers leave this view and live in My Customers only.
+      .filter(a => EARLY_STAGES.includes(a.deal_stage_label) && a.is_returning !== true && !csByDeal[a.deal_id]?.onboarding_completed_at)
       .map(a => {
         const lab = a.lab_name
         const weekly = (lab && weeklyByLab[lab]) || weeklyByDeal[a.deal_id] || []
@@ -706,6 +827,11 @@ export default function Onboarding() {
           healthColor: latest?.health_color || 'unknown',
           healthScore: (lab ? scoreMap[lab] : undefined) ?? scoreMapDeal[a.deal_id] ?? null,
           healthTrend: (lab && trendMap[lab]) || trendMapDeal[a.deal_id] || [],
+          healthHistory: weekly,   // full weekly snapshots → Monthly Health Trend area chart
+          // Filter dimensions (raw HubSpot values from lab_accounts)
+          product: a.product || null,
+          segment: a.customer_segment || null,
+          hardware: a.hardware || null,
           athletes: latest?.athletes_added_week ?? null,
           logins: latest?.logins_week ?? null,
           datapoints: latest?.data_pts_week ?? null,
@@ -726,43 +852,78 @@ export default function Onboarding() {
       })
   }, [accounts, weeklyByLab, weeklyByDeal, scoreMap, scoreMapDeal, trendMap, trendMapDeal, doneMap, catalog, csByDeal, ttvByDeal])
 
-  const owners = useMemo(() => {
-    const byEmail = {}
+  // ── Filter option lists (with counts) from the cohort ────────────────────────
+  const opts = useMemo(() => {
+    const tally = (getter) => {
+      const m = {}
+      cohort.forEach(c => { const v = getter(c); if (v) m[v] = (m[v] || 0) + 1 })
+      return Object.entries(m).sort((x, y) => x[0].localeCompare(y[0])).map(([value, count]) => ({ value, label: value, count }))
+    }
+    const owners = {}
     cohort.forEach(c => {
-      if (!c.ownerEmail && !c.owner) return
-      const key = c.ownerEmail || c.owner
-      if (!byEmail[key]) byEmail[key] = { email: c.ownerEmail, name: c.owner || c.ownerEmail, count: 0 }
-      byEmail[key].count++
+      const email = (c.ownerEmail || '').toLowerCase()
+      const key = email || '__none__'
+      if (!owners[key]) owners[key] = { value: key, label: c.owner || c.ownerEmail || 'Unassigned', count: 0 }
+      owners[key].count++
     })
-    return Object.values(byEmail).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    const hw = {}
+    cohort.forEach(c => splitHw(c.hardware).forEach(t => { hw[t] = (hw[t] || 0) + 1 }))
+    return {
+      dealOwner:        Object.values(owners).sort((a, b) => (a.label || '').localeCompare(b.label || '')),
+      product:          tally(c => c.product),
+      customerSegment:  tally(c => c.segment),
+      speedLabDirector: tally(c => c.director),
+      hardware:         Object.entries(hw).sort((x, y) => x[0].localeCompare(y[0])).map(([value, count]) => ({ value, label: value, count })),
+    }
   }, [cohort])
 
-  useEffect(() => {
-    if (ownerEmail !== null || loading) return
-    const mine = director?.email && owners.find(o => o.email && o.email.toLowerCase() === director.email.toLowerCase())
-    setOwnerEmail(mine ? mine.email : 'all')
-  }, [owners, loading, director, ownerEmail])
+  // Scope = cohort filtered by the multi-select filters (AND across, OR within).
+  // Drives the hero-metric counts + the topbar/notif tallies.
+  const scoped = useMemo(() => {
+    const f = filters
+    return cohort.filter(c => {
+      if (f.dealOwner.length) { const k = (c.ownerEmail || '').toLowerCase() || '__none__'; if (!f.dealOwner.includes(k)) return false }
+      if (f.product.length && !f.product.includes(c.product)) return false
+      if (f.customerSegment.length && !f.customerSegment.includes(c.segment)) return false
+      if (f.speedLabDirector.length && !f.speedLabDirector.includes(c.director)) return false
+      if (f.hardware.length) { const toks = splitHw(c.hardware); if (!toks.some(t => f.hardware.includes(t))) return false }
+      return true
+    })
+  }, [cohort, filters])
 
-  const selected = ownerEmail ?? 'all'
-  const ownerScoped = useMemo(() => (
-    selected === 'all' ? cohort : cohort.filter(c => (c.ownerEmail || '__none__') === selected)
-  ), [cohort, selected])
+  // Clicking a hero metric narrows the customer LIST only (not the hero counts).
+  const heroPredicate = (c) => {
+    if (!heroFilter) return true
+    if (heroFilter.kind === 'activity') return (c.healthColor || 'unknown') === heroFilter.value
+    if (heroFilter.kind === 'health') {
+      const [lo, hi] = heroFilter.value === '30_60' ? [30, 60] : [60, 90]
+      return c.effDay >= lo && c.effDay < hi
+    }
+    if (heroFilter.kind === 'ttv') {
+      const t = effectiveTtv({ cs: c.cs, synced: c.ttvSynced, doneSet: c.doneSet })
+      if (!t.clockStarted) return false
+      if (heroFilter.value === 'passed') return t.status === 'passed'
+      if (heroFilter.value === 'failed') return t.status === 'failed'
+      if (heroFilter.value === 'in_progress') return t.status !== 'passed' && t.status !== 'failed'
+    }
+    return true
+  }
+  const displayed = useMemo(() => (heroFilter ? scoped.filter(heroPredicate) : scoped), [scoped, heroFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleHero = (kind, value) =>
+    setHeroFilter(prev => (prev && prev.kind === kind && prev.value === value ? null : { kind, value }))
+  const heroActive = (kind, value) => heroFilter && heroFilter.kind === kind && heroFilter.value === value
 
   const counts = {}
   OB_STAGES.forEach(s => counts[s.key] = 0)
-  ownerScoped.forEach(c => { counts[c.stageKey]++ })
-
-  const HEALTH_ORDER = { red: 0, orange: 1, yellow: 2, green: 3, unknown: 4 }
-  let list = filter ? ownerScoped.filter(c => c.stageKey === filter) : ownerScoped.slice()
-  list.sort((a, b) => (HEALTH_ORDER[a.healthColor] - HEALTH_ORDER[b.healthColor]) || (a.effDay - b.effDay))
+  displayed.forEach(c => { counts[c.stageKey]++ })
 
   const pendingTaskCount = (c) => c.graduated ? 0 : (catalog[c.stageKey] || []).filter(t => !t.recurring && !c.doneSet.has(t.key)).length
-  const newCust = ownerScoped.filter(c => c.isNew)
-  const pendingSteps = ownerScoped.reduce((n, c) => n + pendingTaskCount(c), 0)
-  const offTrack = ownerScoped.filter(c => c.healthColor === 'red' || c.healthColor === 'orange').length
+  const newCust = scoped.filter(c => c.isNew)
+  const pendingSteps = scoped.reduce((n, c) => n + pendingTaskCount(c), 0)
+  const offTrack = scoped.filter(c => c.healthColor === 'red' || c.healthColor === 'orange').length
 
   const avgScoreIn = (lo, hi) => {
-    const inWin = ownerScoped.filter(c => c.effDay >= lo && c.effDay < hi)
+    const inWin = scoped.filter(c => c.effDay >= lo && c.effDay < hi)
     const v = inWin.map(c => c.healthScore).filter(x => x != null)
     return { avg: v.length ? v.reduce((a, b) => a + b, 0) / v.length : null, n: inWin.length }
   }
@@ -772,9 +933,9 @@ export default function Onboarding() {
   // Effective TTV per customer: CS pass/fail mark > platform-synced > derived
   // from kick-off date + session count. Clock = explicit kick-off date or
   // kick-off checklist complete.
-  const ttvStates = ownerScoped.map(c => ({ c, t: effectiveTtv({ cs: c.cs, synced: c.ttvSynced, doneSet: c.doneSet }) }))
+  const ttvStates = scoped.map(c => ({ c, t: effectiveTtv({ cs: c.cs, synced: c.ttvSynced, doneSet: c.doneSet }) }))
   const eligible   = ttvStates.filter(x => x.t.clockStarted)
-  const notStarted = ownerScoped.length - eligible.length
+  const notStarted = scoped.length - eligible.length
   const ttvPassed  = eligible.filter(x => x.t.status === 'passed').length
   const ttvFailed  = eligible.filter(x => x.t.status === 'failed').length
   const ttvInProg  = eligible.length - ttvPassed - ttvFailed // in window + needs-review
@@ -784,17 +945,31 @@ export default function Onboarding() {
   const ttvTracked = eligible.length > 0
   const ttvCirc = 2 * Math.PI * 52
 
+  // Completed-onboarding customers (Done) — kept out of the cohort, surfaced in a
+  // small reopen-able footer so a mis-click is recoverable.
+  const completedList = useMemo(() => {
+    const f = filters
+    return accounts
+      .filter(a => csByDeal[a.deal_id]?.onboarding_completed_at)
+      .filter(a => {
+        if (f.dealOwner.length) { const k = (a.deal_owner_email || '').toLowerCase() || '__none__'; if (!f.dealOwner.includes(k)) return false }
+        return true
+      })
+      .map(a => ({ dealId: a.deal_id, name: a.company_name || a.lab_name || '(unnamed customer)', at: csByDeal[a.deal_id].onboarding_completed_at }))
+      .sort((x, y) => (y.at || '').localeCompare(x.at || ''))
+  }, [accounts, csByDeal, filters])
+
   // ── Pipeline views: decorate, group by stage, sort, drag-to-advance ──────────
   const decoMap = useMemo(() => {
     const m = {}
-    ownerScoped.forEach(c => { m[c.dealId] = decorateCard(c, catalog) })
+    displayed.forEach(c => { m[c.dealId] = decorateCard(c, catalog) })
     return m
-  }, [ownerScoped, catalog])
+  }, [displayed, catalog])
 
   const byStage = useMemo(() => {
     const m = {}
     OB_STAGES.forEach(s => { m[s.key] = [] })
-    ownerScoped.forEach(c => { if (m[c.stageKey]) m[c.stageKey].push(c) })
+    displayed.forEach(c => { if (m[c.stageKey]) m[c.stageKey].push(c) })
     const sc = id => decoMap[id]?.score ?? 0
     const cmp = sortMode === 'health'
       ? (a, b) => ((a.healthScore ?? 9) - (b.healthScore ?? 9)) || (sc(b.dealId) - sc(a.dealId))
@@ -803,12 +978,12 @@ export default function Onboarding() {
         : (a, b) => sc(b.dealId) - sc(a.dealId)
     Object.values(m).forEach(arr => arr.sort(cmp))
     return m
-  }, [ownerScoped, decoMap, sortMode])
+  }, [displayed, decoMap, sortMode])
 
-  // Weekly-activity rollup for the TTV hero card
+  // Weekly-activity rollup for the hero card (over the filter-scoped set)
   const actCounts = { green: 0, yellow: 0, orange: 0, red: 0, unknown: 0 }
-  ownerScoped.forEach(c => { actCounts[c.healthColor] = (actCounts[c.healthColor] || 0) + 1 })
-  const actTotal = ownerScoped.length || 1
+  scoped.forEach(c => { actCounts[c.healthColor] = (actCounts[c.healthColor] || 0) + 1 })
+  const actTotal = scoped.length || 1
   const greenPct = Math.round((actCounts.green / actTotal) * 100)
   const pct = n => (n / actTotal) * 100 + '%'
 
@@ -824,15 +999,86 @@ export default function Onboarding() {
     const id = dragId.current
     dragId.current = null
     if (id == null) return
-    const c = ownerScoped.find(x => x.dealId === id)
+    const c = cohort.find(x => x.dealId === id)
     if (c) moveStage(c, key)
   }
   const allowDrop = (e) => e.preventDefault()
   const toggleBucket = (k) => setExpandedBuckets(p => ({ ...p, [k]: !p[k] }))
+
+  // ── Done = finish onboarding. Stamps onboarding_cs (reversible) so the card
+  // leaves this view and lives in My Customers only. ──────────────────────────
+  const completeOnboarding = (c) => {
+    if (!window.confirm(`Mark ${c.name} as onboarding complete? They'll move out of Onboarding and stay in My Customers.`)) return
+    const actor = director?.name || director?.email || null
+    saveCs(
+      c.dealId,
+      { onboarding_completed_at: new Date().toISOString(), onboarding_completed_by: actor },
+      [{ kind: 'onboarding_complete', field: 'onboarding_completed_at', old_value: null, new_value: 'complete' }],
+    )
+    if (openId === c.dealId) setOpenId(null)
+  }
+  const reopenOnboarding = (dealId) => {
+    saveCs(
+      dealId,
+      { onboarding_completed_at: null, onboarding_completed_by: null },
+      [{ kind: 'onboarding_reopen', field: 'onboarding_completed_at', old_value: 'complete', new_value: null }],
+    )
+  }
+  // Focus Queue "Start tasks" — open the card scrolled to the task checklist.
+  const startTasks = (c) => { setStartTasksId(c.dealId); setOpenId(c.dealId) }
+
+  // ── Filters: per-user persistence (dashboard_prefs.onboarding_view) ──────────
+  const setFilter = (key, vals) => setFilters(prev => ({ ...prev, [key]: vals }))
+  const activeFilterCount = Object.values(filters).reduce((n, arr) => n + arr.length, 0)
+  const clearFilters = () => { setFilters(EMPTY_FILTERS); setHeroFilter(null) }
+  const saveDefaultView = async () => {
+    if (!director?.id) return
+    setSaveState('saving')
+    try {
+      await supabase.from('dashboard_prefs').upsert(
+        { director_id: director.id, onboarding_view: { filters }, updated_at: new Date().toISOString() },
+        { onConflict: 'director_id' },
+      )
+      setSaveState('saved'); setTimeout(() => setSaveState('idle'), 2000)
+    } catch { setSaveState('idle') }
+  }
+
+  // ── Refresh now: pull HubSpot → lab_accounts via the Netlify function ────────
+  const refreshFromHubspot = async () => {
+    if (syncing) return
+    setSyncing(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch('/.netlify/functions/hubspot-sync', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${session?.access_token || ''}` },
+      })
+      const res = await r.json().catch(() => ({}))
+      if (r.ok && res.ok) {
+        setLastSync(res.ran_at || new Date().toISOString())
+        const { data } = await supabase.from('lab_accounts').select('*')
+        if (data) setAccounts(data)
+      } else {
+        alert(`HubSpot refresh failed: ${res.error || `HTTP ${r.status}`}`)
+      }
+    } catch (e) {
+      alert(`HubSpot refresh failed: ${String(e.message || e)}`)
+    }
+    setSyncing(false)
+  }
+  const fmtSync = (iso) => {
+    if (iso === undefined) return 'checking…'
+    if (!iso) return 'never synced'
+    const d = new Date(iso)
+    if (isNaN(d)) return 'unknown'
+    return 'synced ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  }
+
   const drawerProps = (c) => ({
     c, catalog, doneSet: c.doneSet, doneMeta: doneMetaMap[c.dealId],
     onOpenTemplate: openTemplate, onSetDone: (k, v) => setDone(c.dealId, k, v),
     onSaveCs: (patch, events) => saveCs(c.dealId, patch, events), savingCs, hsPushState: hsPush[c.dealId],
+    scrollToTasks: startTasksId === c.dealId,
   })
 
   const csmName = director?.name || 'your USR lead'
@@ -862,26 +1108,21 @@ export default function Onboarding() {
     <div className="screen">
       <div className="topbar">
         <div>
-          <div className="topbar-eyebrow">USR Customer Success · {ownerScoped.length} in onboarding</div>
+          <div className="topbar-eyebrow">USR Customer Success · {scoped.length} in onboarding</div>
           <h1 className="topbar-title">Onboarding</h1>
         </div>
-        <div className="topbar-meta">
+        <div className="topbar-meta" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="ob-sync">
+            <button className="btn btn-outline" onClick={refreshFromHubspot} disabled={syncing} title="Pull the latest deals from HubSpot into the onboarding view">
+              {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}Refresh now
+            </button>
+            <span className="ob-sync-stamp">{fmtSync(lastSync)}</span>
+          </div>
           {director?.is_admin && (
-            <button className="btn btn-outline" onClick={() => setEditorOpen(true)} style={{ marginRight: 12 }}>
+            <button className="btn btn-outline" onClick={() => setEditorOpen(true)}>
               <Settings size={14} />Edit templates
             </button>
           )}
-          <div className="tm" style={{ textAlign: 'right' }}>
-            <div className="tm-label">Deal owner</div>
-            <select
-              value={selected}
-              onChange={e => setOwnerEmail(e.target.value)}
-              style={{ marginTop: 4, fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--usr-black)', background: 'var(--usr-white)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '7px 10px', cursor: 'pointer', minWidth: 180 }}
-            >
-              <option value="all">All deals</option>
-              {owners.map(o => <option key={o.email || o.name} value={o.email || '__none__'}>{o.name} ({o.count})</option>)}
-            </select>
-          </div>
         </div>
       </div>
 
@@ -928,9 +1169,9 @@ export default function Onboarding() {
             </div>
             <div className="hero-side">
               <div className="ttv-funnel">
-                <div className="ttv-fchip"><span className="n" style={{ color: 'var(--st-green)' }}>{ttvTracked ? ttvPassed : '—'}</span><span className="l">Passed</span></div>
-                <div className="ttv-fchip"><span className="n" style={{ color: 'var(--st-yellow)' }}>{ttvTracked ? ttvInProg : '—'}</span><span className="l">In progress</span></div>
-                <div className="ttv-fchip"><span className="n" style={{ color: 'var(--st-red)' }}>{ttvFailed || ttvTracked ? ttvFailed : '—'}</span><span className="l">Failed</span></div>
+                <button type="button" className={`ttv-fchip ${heroActive('ttv', 'passed') ? 'on' : ''}`} onClick={() => toggleHero('ttv', 'passed')} title="Filter list to TTV passed"><span className="n" style={{ color: 'var(--st-green)' }}>{ttvTracked ? ttvPassed : '—'}</span><span className="l">Passed</span></button>
+                <button type="button" className={`ttv-fchip ${heroActive('ttv', 'in_progress') ? 'on' : ''}`} onClick={() => toggleHero('ttv', 'in_progress')} title="Filter list to TTV in progress"><span className="n" style={{ color: 'var(--st-yellow)' }}>{ttvTracked ? ttvInProg : '—'}</span><span className="l">In progress</span></button>
+                <button type="button" className={`ttv-fchip ${heroActive('ttv', 'failed') ? 'on' : ''}`} onClick={() => toggleHero('ttv', 'failed')} title="Filter list to TTV failed"><span className="n" style={{ color: 'var(--st-red)' }}>{ttvFailed || ttvTracked ? ttvFailed : '—'}</span><span className="l">Failed</span></button>
               </div>
               <div className="ttv-avg"><span className="n">{ttvAvgDays != null ? ttvAvgDays.toFixed(1) : '—'}</span><span className="l">avg days to 5 recaps (on-time)</span></div>
               <div className="ttv-hnote">{eligible.length} clock started · {notStarted} not started (set a kick-off date to start) · {TTV_WINDOW_DAYS}-day window from kick-off</div>
@@ -941,8 +1182,8 @@ export default function Onboarding() {
             <div className="ob-wact-body">
               <div className="ob-wact-figure">
                 <span className="ob-wact-pct">{greenPct}%</span>
-                <span className="ob-wact-lab">Green · active this week</span>
-                <span className="ob-wact-sub">{actCounts.green} of {ownerScoped.length} customers</span>
+                <span className="ob-wact-lab">Active this week</span>
+                <span className="ob-wact-sub">{actCounts.green} of {scoped.length} customers</span>
               </div>
               <div className="ob-wact-right">
                 <div className="ob-wact-bar">
@@ -952,9 +1193,10 @@ export default function Onboarding() {
                   <span style={{ width: pct(actCounts.red), background: 'var(--st-red)' }} />
                 </div>
                 <div className="ob-wact-chips">
-                  <div className="ob-wact-chip"><span className="d" style={{ background: 'var(--st-yellow)' }} /><b>{actCounts.yellow}</b><span>Light</span></div>
-                  <div className="ob-wact-chip"><span className="d" style={{ background: 'var(--st-orange)' }} /><b>{actCounts.orange}</b><span>Stale</span></div>
-                  <div className="ob-wact-chip"><span className="d" style={{ background: 'var(--st-red)' }} /><b>{actCounts.red}</b><span>At risk</span></div>
+                  <button type="button" className={`ob-wact-chip ${heroActive('activity', 'green') ? 'on' : ''}`} onClick={() => toggleHero('activity', 'green')}><span className="d" style={{ background: 'var(--st-green)' }} /><b>{actCounts.green}</b><span>Active</span></button>
+                  <button type="button" className={`ob-wact-chip ${heroActive('activity', 'yellow') ? 'on' : ''}`} onClick={() => toggleHero('activity', 'yellow')}><span className="d" style={{ background: 'var(--st-yellow)' }} /><b>{actCounts.yellow}</b><span>At risk</span></button>
+                  <button type="button" className={`ob-wact-chip ${heroActive('activity', 'orange') ? 'on' : ''}`} onClick={() => toggleHero('activity', 'orange')}><span className="d" style={{ background: 'var(--st-orange)' }} /><b>{actCounts.orange}</b><span>Urgent</span></button>
+                  <button type="button" className={`ob-wact-chip ${heroActive('activity', 'red') ? 'on' : ''}`} onClick={() => toggleHero('activity', 'red')}><span className="d" style={{ background: 'var(--st-red)' }} /><b>{actCounts.red}</b><span>Critical</span></button>
                 </div>
               </div>
             </div>
@@ -962,20 +1204,20 @@ export default function Onboarding() {
         </div>
 
         <div className="ob-hero-stack">
-          <div className="hero-card dark ob-hero-mini">
+          <button type="button" className={`hero-card dark ob-hero-mini ob-hero-click ${heroActive('health', '30_60') ? 'on' : ''}`} onClick={() => toggleHero('health', '30_60')} title="Filter list to customers in the 30–60 day window">
             <div className="hero-head"><span className="hero-label">Avg Health · Days 30–60</span></div>
             <div className="hero-body">
               <span className="ob-mini-num" style={{ color: 'var(--usr-white)' }}>{w3060.avg != null ? w3060.avg.toFixed(1) : '—'}<span className="suf">/9</span></span>
               <span className="ob-mini-foot">{w3060.n} customer{w3060.n !== 1 ? 's' : ''} in the 30–60 day window · watch weekly activity closely</span>
             </div>
-          </div>
-          <div className="hero-card dark ob-hero-mini">
+          </button>
+          <button type="button" className={`hero-card dark ob-hero-mini ob-hero-click ${heroActive('health', '60_90') ? 'on' : ''}`} onClick={() => toggleHero('health', '60_90')} title="Filter list to customers in the 60–90 day window">
             <div className="hero-head"><span className="hero-label">Avg Health · Days 60–90</span></div>
             <div className="hero-body">
               <span className="ob-mini-num" style={{ color: 'var(--st-green)' }}>{w6090.avg != null ? w6090.avg.toFixed(1) : '—'}<span className="suf">/9</span></span>
               <span className="ob-mini-foot">{w6090.n} customer{w6090.n !== 1 ? 's' : ''} approaching the 90-day QBR &amp; game-planning session</span>
             </div>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -983,26 +1225,48 @@ export default function Onboarding() {
       <div className="ob-pl">
         <div className="ob-pl-head">
           <h2 className="ob-pl-title">90-Day Pipeline</h2>
+          {/* View switcher — centered between the title and the filters on the right */}
           <div className="ob-seg">
             <button className={pipelineView === 'stack' ? 'active' : ''} onClick={() => setPipelineView('stack')}><Layers size={14} />Smart Stack</button>
             <button className={pipelineView === 'board' ? 'active' : ''} onClick={() => setPipelineView('board')}><LayoutGrid size={14} />Kanban Board</button>
             <button className={pipelineView === 'focus' ? 'active' : ''} onClick={() => setPipelineView('focus')}><ListChecks size={14} />Focus Queue</button>
           </div>
-          <div className="ob-pl-sort">
-            <label>Sort</label>
-            <select value={sortMode} onChange={e => setSortMode(e.target.value)}>
-              <option value="priority">Priority (open tasks first)</option>
-              <option value="health">Worst health first</option>
-              <option value="days">Most days in stage</option>
-            </select>
+          <div className="ob-pl-right">
+            <FilterDropdown label="Deal Owner"         options={opts.dealOwner}        selected={filters.dealOwner}        onChange={v => setFilter('dealOwner', v)} />
+            <FilterDropdown label="Product"            options={opts.product}          selected={filters.product}          onChange={v => setFilter('product', v)} />
+            <FilterDropdown label="Customer Segment"   options={opts.customerSegment}  selected={filters.customerSegment}  onChange={v => setFilter('customerSegment', v)} />
+            <FilterDropdown label="Speed Lab Director" options={opts.speedLabDirector} selected={filters.speedLabDirector} onChange={v => setFilter('speedLabDirector', v)} />
+            <FilterDropdown label="Hardware"           options={opts.hardware}         selected={filters.hardware}         onChange={v => setFilter('hardware', v)} />
+            <button className={`mc-save-btn ${saveState === 'saved' ? 'saved' : ''}`} onClick={saveDefaultView} disabled={saveState === 'saving'} title="Save these filters as your default Onboarding view">
+              {saveState === 'saved' ? <><Check size={14} />Saved</> : <><Star size={14} />Save default</>}
+            </button>
+            <div className="ob-pl-sort">
+              <label>Sort</label>
+              <select value={sortMode} onChange={e => setSortMode(e.target.value)}>
+                <option value="priority">Priority (open tasks first)</option>
+                <option value="health">Worst health first</option>
+                <option value="days">Most days in stage</option>
+              </select>
+            </div>
           </div>
         </div>
+        {(activeFilterCount > 0 || heroFilter) && (
+          <div className="ob-active-filters">
+            {heroFilter && (
+              <button className="ob-chipfilter hero" onClick={() => setHeroFilter(null)}>
+                {HERO_LABELS[heroFilter.kind]?.[heroFilter.value] || 'Filtered'}<X size={12} />
+              </button>
+            )}
+            <span className="ob-active-count">{displayed.length} shown{activeFilterCount > 0 ? ` · ${activeFilterCount} filter${activeFilterCount !== 1 ? 's' : ''}` : ''}</span>
+            <button className="ob-clearfilters" onClick={clearFilters}>Clear all</button>
+          </div>
+        )}
 
-        {ownerScoped.length === 0 ? (
+        {displayed.length === 0 ? (
           <div className="stub" style={{ minHeight: 220 }}>
             <div className="stub-mark"><Activity size={26} /></div>
             <h2 style={{ fontSize: 24 }}>No customers in onboarding here</h2>
-            <p style={{ maxWidth: 420 }}>{selected === 'all' ? 'No active customers are in early stages (On Deck → First 90 Days) right now.' : 'No early-stage customers owned by this person. Try “All deals.”'}</p>
+            <p style={{ maxWidth: 420 }}>{(activeFilterCount > 0 || heroFilter) ? 'No customers match the current filters. Try clearing some.' : 'No active customers are in early stages (On Deck → First 90 Days) right now.'}</p>
           </div>
         ) : pipelineView === 'stack' ? (
           /* ── SMART STACK — collapsible stage buckets, needs-action first ── */
@@ -1030,7 +1294,7 @@ export default function Onboarding() {
                       {needs.map(c => (
                         <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
-                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onDragStart={onCardDragStart(c)}>
+                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
                           <ObCardDetail {...drawerProps(c)} />
                         </PipelineCard>
                       ))}
@@ -1038,7 +1302,7 @@ export default function Onboarding() {
                       {onTrack.map(c => (
                         <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
-                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onDragStart={onCardDragStart(c)}>
+                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
                           <ObCardDetail {...drawerProps(c)} />
                         </PipelineCard>
                       ))}
@@ -1066,7 +1330,7 @@ export default function Onboarding() {
                     {arr.map(c => (
                       <KanbanCard key={c.dealId} c={c} d={decoMap[c.dealId]}
                         onOpen={() => setOpenId(c.dealId)}
-                        onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onDragStart={onCardDragStart(c)} />
+                        onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)} />
                     ))}
                     {arr.length === 0 && <div className="ob-kdrop">DROP HERE</div>}
                   </div>
@@ -1103,15 +1367,17 @@ export default function Onboarding() {
                     <>
                       <div className="ob-next-lab">Next up · work this first</div>
                       <PipelineCard c={featured} d={decoMap[featured.dealId]} open={openId === featured.dealId}
+                        focusMode onStartTasks={() => startTasks(featured)}
                         onToggle={() => setOpenId(openId === featured.dealId ? null : featured.dealId)}
-                        onAdvance={() => moveStage(featured, decoMap[featured.dealId].next)} onDragStart={onCardDragStart(featured)}>
+                        onAdvance={() => moveStage(featured, decoMap[featured.dealId].next)} onComplete={() => completeOnboarding(featured)} onDragStart={onCardDragStart(featured)}>
                         <ObCardDetail {...drawerProps(featured)} />
                       </PipelineCard>
                       {rest.length > 0 && <div className="ob-grouplabel">Queue · {rest.length} remaining</div>}
                       {rest.map(c => (
                         <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
+                          focusMode onStartTasks={() => startTasks(c)}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
-                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onDragStart={onCardDragStart(c)}>
+                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
                           <ObCardDetail {...drawerProps(c)} />
                         </PipelineCard>
                       ))}
@@ -1124,11 +1390,34 @@ export default function Onboarding() {
             })()}
           </div>
         )}
+
+        {/* Completed onboarding — left this view, live in My Customers. Reopen-able. */}
+        {completedList.length > 0 && (
+          <div className="ob-completed">
+            <button className="ob-completed-head" onClick={() => setCompletedOpen(o => !o)}>
+              <Trophy size={14} />Completed onboarding · {completedList.length}
+              <span className={`ob-completed-chev ${completedOpen ? 'open' : ''}`}><ChevronDown size={16} /></span>
+            </button>
+            {completedOpen && (
+              <div className="ob-completed-body">
+                {completedList.map(x => (
+                  <div key={x.dealId} className="ob-completed-row">
+                    <CheckCircle size={14} style={{ color: 'var(--st-green)' }} />
+                    <span className="ob-completed-name">{x.name}</span>
+                    <span className="ob-completed-when">{fmtStamp(x.at) || ''}</span>
+                    <button className="ob-completed-reopen" onClick={() => reopenOnboarding(x.dealId)}>Reopen</button>
+                  </div>
+                ))}
+                <div className="ob-completed-foot">These customers stay active in My Customers — reopening brings them back into onboarding.</div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Kanban opens the full drawer in a modal (columns are too narrow to expand inline) */}
       {pipelineView === 'board' && openId != null && (() => {
-        const c = ownerScoped.find(x => x.dealId === openId)
+        const c = cohort.find(x => x.dealId === openId)
         if (!c) return null
         return (
           <div className="ob-drawer-overlay" onClick={() => setOpenId(null)}>
