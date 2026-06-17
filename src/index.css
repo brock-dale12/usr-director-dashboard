@@ -578,6 +578,23 @@ body {
 }
 .lab-loc { font-size: 13px; color: var(--fg-muted); margin-top: 3px; }
 
+/* USR-DB org link shown beneath the customer (deal) name. Small, secondary. */
+.lab-org { display: flex; align-items: center; gap: 7px; margin-top: 2px; flex-wrap: wrap; }
+.lab-org-name { font-size: 12px; color: var(--fg-subtle); letter-spacing: 0.01em; }
+.lab-org-flag {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.lab-org-flag.ok   { color: var(--st-green);  background: rgba(34,197,94,0.10); }
+.lab-org-flag.warn { color: var(--st-orange); background: rgba(249,115,22,0.12); }
+.lab-org-flag.bad  { color: var(--st-red);    background: rgba(239,68,68,0.12); }
+
 .lab-status-pill {
   display: inline-flex;
   align-items: center;
@@ -1567,3 +1584,122 @@ body {
 .wk2-cell.pre        { color: var(--fg-subtle); }
 .wk2-label { font-size: 10px; }
 .wk2-row { grid-template-columns: 52px repeat(8, 1fr); }
+
+/* ═══ Onboarding pipeline views (2026-06-17) — Smart Stack / Kanban / Focus ════
+   Three switchable views of the 90-day pipeline with drag-to-advance cards.
+   All on-brand tokens (carmine #EC3642, Oswald display, status ramp). ════════ */
+
+/* Weekly-activity block inside the TTV hero card */
+.ob-wact { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 18px; }
+.ob-wact-head { font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-subtle); }
+.ob-wact-body { display: flex; align-items: flex-start; gap: 26px; margin-top: 14px; flex-wrap: wrap; }
+.ob-wact-figure { display: flex; flex-direction: column; flex: none; }
+.ob-wact-pct { font-family: var(--font-display); font-weight: 800; font-size: 50px; line-height: 0.85; color: var(--st-green); }
+.ob-wact-lab { font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.04em; color: var(--st-green); margin-top: 6px; }
+.ob-wact-sub { font-size: 12px; color: var(--fg-subtle); margin-top: 2px; }
+.ob-wact-right { flex: 1; min-width: 240px; }
+.ob-wact-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bg-alt); }
+.ob-wact-bar > span { display: block; height: 100%; }
+.ob-wact-chips { display: flex; gap: 10px; margin-top: 14px; }
+.ob-wact-chip { flex: 1; display: flex; align-items: center; gap: 9px; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; }
+.ob-wact-chip .d { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+.ob-wact-chip b { font-family: var(--font-display); font-weight: 800; font-size: 21px; line-height: 1; color: var(--usr-black); }
+.ob-wact-chip span:last-child { font-family: var(--font-display); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-subtle); }
+
+/* Pipeline header: title + segmented view toggle + sort */
+.ob-pl { margin-top: 4px; }
+.ob-pl-head { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin: 30px 0 18px; }
+.ob-pl-title { font-family: var(--font-display); font-weight: 800; font-size: 30px; letter-spacing: 0.01em; color: var(--usr-black); margin: 0; }
+.ob-seg { display: inline-flex; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 11px; padding: 4px; gap: 4px; }
+.ob-seg button { display: inline-flex; align-items: center; gap: 7px; border: none; border-radius: 8px; padding: 9px 15px; font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--fg-muted); background: transparent; cursor: pointer; }
+.ob-seg button:hover { color: var(--usr-black); }
+.ob-seg button.active { background: var(--usr-black); color: #fff; }
+.ob-pl-sort { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.ob-pl-sort label { font-family: var(--font-display); font-weight: 700; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-subtle); }
+.ob-pl-sort select { font-family: var(--font-display); font-weight: 700; font-size: 12px; color: var(--usr-black); background: #fff; border: 1px solid var(--border-strong); border-radius: 6px; padding: 7px 9px; cursor: pointer; }
+
+/* Shared card tags */
+.ob-tag-new { background: var(--usr-pink); color: #fff; font-family: var(--font-display); font-weight: 700; font-size: 10px; letter-spacing: 0.1em; padding: 2px 7px; border-radius: 5px; }
+.ob-tag-step { background: var(--st-red-bg); color: var(--usr-pink); font-family: var(--font-display); font-weight: 700; font-size: 10.5px; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 5px; text-transform: uppercase; }
+.ob-tag-task { font-family: var(--font-display); font-weight: 700; font-size: 10.5px; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 5px; text-transform: uppercase; }
+.ob-tag-task.red { background: var(--st-red-bg); color: var(--usr-pink); }
+.ob-tag-task.orange { background: var(--st-orange-bg); color: var(--st-orange); }
+.ob-adv-btn { font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.05em; color: #fff; background: var(--usr-black); border: none; border-radius: 8px; padding: 10px 15px; cursor: pointer; flex: none; white-space: nowrap; transition: background var(--dur-fast); }
+.ob-adv-btn:hover { background: var(--usr-pink); }
+.ob-adv-btn.sm { padding: 7px 10px; font-size: 10px; border-radius: 6px; }
+.ob-grouplabel { font-family: var(--font-display); font-weight: 700; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-subtle); margin: 16px 4px 4px; }
+.ob-grouplabel.need { color: var(--usr-pink); }
+.ob-bucket-empty { padding: 18px 4px; color: var(--fg-subtle); font-size: 13px; }
+
+/* ── Smart Stack ── */
+.ob-stack { display: flex; flex-direction: column; gap: 14px; }
+.ob-bucket { background: #fff; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-1); }
+.ob-bucket.drag-over { border-color: var(--usr-pink); box-shadow: 0 0 0 2px rgba(236,54,66,0.2); }
+.ob-bucket-head { display: flex; align-items: center; gap: 16px; padding: 18px 22px; cursor: pointer; }
+.ob-bucket-head:hover { background: var(--bg-alt); }
+.ob-bucket-badge { width: 46px; height: 46px; border-radius: 10px; color: #fff; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 800; font-size: 21px; flex: none; }
+.ob-bucket-id { flex: 1; min-width: 0; }
+.ob-bucket-title { font-family: var(--font-display); font-weight: 800; font-size: 19px; letter-spacing: 0.02em; color: var(--usr-black); }
+.ob-bucket-desc { font-size: 13px; color: var(--fg-muted); margin-top: 2px; }
+.ob-bucket-need { background: var(--st-red-bg); color: var(--usr-pink); font-family: var(--font-display); font-weight: 700; font-size: 11px; letter-spacing: 0.06em; padding: 6px 11px; border-radius: 7px; white-space: nowrap; }
+.ob-bucket-chev { color: var(--fg-subtle); transition: transform var(--dur-fast); display: inline-flex; }
+.ob-bucket-chev.open { transform: rotate(180deg); }
+.ob-bucket-body { padding: 4px 16px 14px; border-top: 1px solid var(--border); }
+
+/* ── Pipeline card (Stack rows + Focus Queue) ── */
+.ob-pcard { background: #fff; border: 1px solid var(--border); border-radius: 12px; margin: 8px 0; overflow: hidden; }
+.ob-pcard.open { border-color: var(--border-strong); box-shadow: var(--shadow-1); }
+.ob-pcard-row { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-left: 3px solid transparent; cursor: pointer; }
+.ob-pcard-row:hover { background: var(--bg-alt); }
+.ob-pcard-grip { color: #c9cbce; cursor: grab; flex: none; display: inline-flex; }
+.ob-pcard-grip:active { cursor: grabbing; }
+.ob-pcard-main { flex: 1; min-width: 0; }
+.ob-pcard-namerow { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.ob-pcard-name { font-family: var(--font-display); font-weight: 700; font-size: 17px; letter-spacing: 0.01em; color: var(--usr-black); }
+.ob-pcard-meta { font-size: 12.5px; color: var(--fg-muted); margin-top: 4px; }
+.ob-pcard-day { font-family: var(--font-display); font-weight: 800; font-size: 18px; color: var(--usr-black); flex: none; min-width: 52px; text-align: right; }
+.ob-pcard-day span { font-size: 12px; color: var(--fg-subtle); font-weight: 400; }
+.ob-pcard-chip { font-family: var(--font-body); font-weight: 600; font-size: 12px; border: 1px solid; border-radius: 7px; padding: 6px 10px; flex: none; white-space: nowrap; }
+.ob-pcard-chev { color: var(--fg-subtle); flex: none; display: inline-flex; transition: transform var(--dur-fast); }
+.ob-pcard-chev.open { transform: rotate(180deg); }
+.ob-pcard .ob-detail { padding: 4px 18px 20px; }
+
+/* ── Kanban board ── */
+.ob-kanban { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 14px; align-items: flex-start; }
+.ob-kcol { flex: none; width: 288px; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; max-height: 800px; }
+.ob-kcol.drag-over { border-color: var(--usr-pink); box-shadow: 0 0 0 2px rgba(236,54,66,0.2); }
+.ob-kcol-head { display: flex; align-items: center; gap: 9px; padding: 4px 4px 12px; }
+.ob-kcol-accent { width: 7px; height: 24px; border-radius: 3px; flex: none; }
+.ob-kcol-label { font-family: var(--font-display); font-weight: 800; font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--usr-black); flex: 1; }
+.ob-kcol-count { font-family: var(--font-display); font-weight: 800; font-size: 15px; color: var(--usr-black); background: #fff; border-radius: 6px; padding: 1px 10px; }
+.ob-kcol-body { overflow-y: auto; flex: 1; padding: 2px; }
+.ob-kcard { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 10px; padding: 12px 13px; margin-bottom: 10px; cursor: grab; box-shadow: var(--shadow-1); }
+.ob-kcard:active { cursor: grabbing; }
+.ob-kcard-top { display: flex; align-items: center; gap: 8px; }
+.ob-kcard-name { font-family: var(--font-display); font-weight: 700; font-size: 14px; color: var(--usr-black); flex: 1; min-width: 0; line-height: 1.18; }
+.ob-kcard-meta { font-size: 11.5px; color: var(--fg-subtle); margin-top: 7px; }
+.ob-kcard-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; }
+.ob-kcard-chip { font-family: var(--font-display); font-weight: 700; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ob-kdrop { border: 2px dashed var(--border-strong); border-radius: 10px; padding: 26px 10px; text-align: center; color: var(--fg-subtle); font-family: var(--font-display); font-size: 12px; letter-spacing: 0.06em; }
+
+/* ── Focus Queue ── */
+.ob-focus-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.ob-focus-tab { display: inline-flex; align-items: center; gap: 9px; border: 1px solid var(--border); background: #fff; color: var(--usr-black); border-radius: 11px; padding: 11px 15px; cursor: pointer; }
+.ob-focus-tab:hover { border-color: var(--border-strong); }
+.ob-focus-tab.active { background: var(--usr-black); color: #fff; border-color: var(--usr-black); }
+.ob-focus-tab .n { font-family: var(--font-display); font-weight: 800; font-size: 20px; line-height: 1; }
+.ob-focus-tab .l { font-family: var(--font-display); font-weight: 700; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+.ob-focus-panel { background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 24px 26px; box-shadow: var(--shadow-1); }
+.ob-focus-phead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ob-focus-ptitle { font-family: var(--font-display); font-weight: 800; font-size: 22px; letter-spacing: 0.02em; color: var(--usr-black); }
+.ob-focus-pdesc { font-size: 13px; color: var(--fg-muted); margin-top: 3px; }
+.ob-focus-pcount { text-align: right; }
+.ob-focus-pcount .n { display: block; font-family: var(--font-display); font-weight: 800; font-size: 30px; color: var(--usr-black); line-height: 1; }
+.ob-focus-pcount .l { font-family: var(--font-display); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--usr-pink); margin-top: 3px; }
+.ob-next-lab { font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--usr-pink); margin: 20px 0 4px; }
+
+/* ── Kanban drawer modal ── */
+.ob-drawer-overlay { position: fixed; inset: 0; background: rgba(12,12,14,0.55); display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; z-index: 60; overflow-y: auto; }
+.ob-drawer-modal { background: #fff; border-radius: 14px; width: 100%; max-width: 860px; box-shadow: 0 24px 60px rgba(0,0,0,0.3); overflow: hidden; }
+.ob-drawer-modal-head { display: flex; align-items: center; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+.ob-drawer-modal-name { font-family: var(--font-display); font-weight: 800; font-size: 20px; color: var(--usr-black); }

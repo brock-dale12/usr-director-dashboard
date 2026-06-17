@@ -366,6 +366,16 @@ export function LabCard({ snap, allHistory, viewingId, stage, score = null, acco
     : `${snap.days_since_activity}d inactive`
     : 'No record'
 
+  // Hero = the customer's deal/company name; the USR-DB organization it resolves
+  // to sits beneath it (smaller), with a link-quality flag so a wrong or missing
+  // match — the main source of bad activity/health numbers — is visible at a glance.
+  // org_id is stamped on the snapshot today; org_name + org_match_kind arrive with
+  // the Phase-1 migration and light up the verified/fuzzy badges.
+  const heroName = account?.company_name || snap.lab_name || account?.lab_name || '(unnamed customer)'
+  const orgName  = account?.org_name || null
+  const orgId    = account?.org_id ?? snap.org_id ?? null
+  const orgMatch = account?.org_match_kind || (orgId ? 'linked' : 'none')
+
   const loadLogs = useCallback(async () => {
     if (hideNotes || !viewingId || !snap.lab_name) { setLogs([]); return }
     setLoadingLogs(true)
@@ -434,11 +444,22 @@ export function LabCard({ snap, allHistory, viewingId, stage, score = null, acco
           style={{ color: sColor }}
         />
 
-        {/* Lab name + activity */}
+        {/* Customer (deal) name = hero · USR org + link quality beneath · activity */}
         <div className="lab-id">
           <div className="lab-name-row">
-            <span className="lab-name">{snap.lab_name}</span>
+            <span className="lab-name">{heroName}</span>
             {stage && <StageBadge stage={stage} />}
+          </div>
+          <div className="lab-org">
+            {orgId || orgName ? (
+              <>
+                <span className="lab-org-name">USR org: {orgName || `#${orgId}`}</span>
+                {orgMatch === 'fuzzy' && <span className="lab-org-flag warn" title="Matched to a USR organization by name — verify it's the right org">⚠ fuzzy</span>}
+                {orgMatch === 'exact' && <span className="lab-org-flag ok" title="Verified link via HubSpot company ID">✓ verified</span>}
+              </>
+            ) : (
+              <span className="lab-org-flag bad" title="No USR organization linked — weekly activity & health can't be computed for this customer">✗ not linked to USR org</span>
+            )}
           </div>
           <div className="lab-loc">{activityLabel}</div>
         </div>

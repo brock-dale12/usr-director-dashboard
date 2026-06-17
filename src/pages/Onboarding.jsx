@@ -13,7 +13,21 @@ import WeeklyMatrix from '../components/WeeklyMatrix'
 import {
   Activity, Bell, ChevronDown, Mail, Phone, Zap, Check, Settings,
   CheckCircle, Send, Copy, ArrowRight, User, Loader2, CheckSquare, Square, Pencil, StickyNote,
+  GripVertical, LayoutGrid, Layers, ListChecks, AlertTriangle,
 } from 'lucide-react'
+
+// ─── Stage presentation: accent color + one-line description per journey stage ─
+// Keyed to OB_STAGES. Accents follow the USR status ramp (pink → green → black).
+const STAGE_META = {
+  handoff:   { accent: 'var(--usr-pink)',  desc: 'Make first contact and book the kick-off call fast' },
+  kickoff:   { accent: 'var(--st-orange)', desc: 'Run the kick-off call and start the TTV clock' },
+  ttv:       { accent: 'var(--st-yellow)', desc: 'Drive 5 session recaps inside the 7-day window' },
+  impl:      { accent: 'var(--st-green)',  desc: 'Confirm rollout, roster and adoption plan' },
+  checkin30: { accent: 'var(--st-green)',  desc: 'Review early wins and weekly usage' },
+  day3060:   { accent: 'var(--st-green)',  desc: 'Deepen adoption and expand athletes' },
+  day6090:   { accent: 'var(--st-green)',  desc: 'Prep the quarterly business review' },
+  qbr:       { accent: 'var(--usr-black)', desc: 'Run the review and lock the renewal path' },
+}
 
 /**
  * Onboarding — Admin (Customer Success Hub). First-90-days workflow.
@@ -273,53 +287,49 @@ function TaskRow({ task, c, isDone, meta, onOpen, onToggle }) {
   )
 }
 
-// ─── Onboarding customer card ─────────────────────────────────────────────────
-function ObCard({ c, catalog, open, onToggle, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState }) {
-  const color  = c.healthColor || 'unknown'
-  const sColor = STATUS_COLORS[color]
-  const tasks = catalog[c.stageKey] || []
-  const pending = tasks.filter(t => !t.recurring && !doneSet.has(t.key))
-  const nextLabel = c.graduated ? null : (OB_STAGES[OB_INDEX[c.stageKey] + 1]?.label || null)
-  const ttv = effectiveTtv({ cs: c.cs, synced: c.ttvSynced, doneSet })
+// ─── Per-customer pipeline-card decoration (TTV chip, overdue, attention score) ─
+// Stage normally derives from completed gating tasks; a manual ADVANCE/drag sets
+// a stage_override that pins the card ahead. Unfinished required steps from
+// EARLIER stages then travel with the deal as "overdue" — surfaced here, never
+// silently marked done.
+function decorateCard(c, catalog) {
+  const ttv = effectiveTtv({ cs: c.cs, synced: c.ttvSynced, doneSet: c.doneSet })
   const ttvMeta = TTV_STATUS_META[ttv.status] || TTV_STATUS_META.not_started
+  const curIdx = OB_INDEX[c.stageKey] ?? 0
+  let overdue = 0
+  for (const s of OB_STAGES) {
+    if ((OB_INDEX[s.key] ?? 0) >= curIdx) break
+    gatingKeys(s.key).forEach(k => { if (!c.doneSet.has(k)) overdue++ })
+  }
+  const pending = c.graduated ? 0 : (catalog[c.stageKey] || []).filter(t => !t.recurring && !c.doneSet.has(t.key)).length
+  let task = null
+  if (c.healthColor === 'red') task = { text: 'AT RISK · NO ACTIVITY', kind: 'red' }
+  else if (ttv.status === 'review') task = { text: 'TTV WINDOW ELAPSED', kind: 'orange' }
+  else if (overdue > 0) task = { text: `${overdue} OVERDUE STEP${overdue > 1 ? 'S' : ''}`, kind: 'red' }
+  else if (c.healthColor === 'orange') task = { text: 'OFF-TRACK · STALE', kind: 'orange' }
+  const needsAction = !!task
+  const sev = ({ red: 300, orange: 150, yellow: 40, green: 0, unknown: 20 })[c.healthColor] || 0
+  const score = (ttv.status === 'review' ? 200 : 0) + sev + overdue * 60 + (9 - (c.healthScore ?? 5)) * 5 + (c.day || 0) * 0.1
+  const next = c.graduated ? null : (OB_STAGES[curIdx + 1]?.key || null)
+  const meta = [
+    [c.city, c.state].filter(Boolean).join(', '),
+    c.athletes != null ? `${c.athletes} athletes` : null,
+    c.healthScore != null ? `${c.healthScore}/9 health` : null,
+  ].filter(Boolean).join(' · ')
+  const chipText = `TTV: ${ttvMeta.label}` + (ttv.status === 'in_progress' && ttv.sessions != null ? ` · ${ttv.sessions}/${TTV_TARGET}` : '')
+  return { ttv, ttvMeta, overdue, pending, task, needsAction, score, next, meta, chipText, chipColor: ttvMeta.color }
+}
+
+// ─── The expandable drawer (contact, activity/health, journey + task checklist) ─
+// Extracted so every pipeline view (Smart Stack, Kanban, Focus Queue) opens the
+// SAME rich detail — the place the actual CS work happens.
+function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState }) {
+  const nextLabel = c.graduated ? null : (OB_STAGES[OB_INDEX[c.stageKey] + 1]?.label || null)
   const [editOpen, setEditOpen] = useState(false)
   const [viewStage, setViewStage] = useState(null) // null = follow the customer's current stage
   const viewKey = viewStage || (c.graduated ? 'qbr' : c.stageKey)
 
   return (
-    <div className={`ob-card ${open ? 'open' : ''}`}>
-      <div className="ob-row" onClick={onToggle}>
-        <span className="status-dot" style={{ background: sColor }} />
-        <div className="lab-id">
-          <div className="lab-name-row">
-            <span className="lab-name">{c.name}</span>
-            {c.isNew && <span className="lab-new-tag">NEW</span>}
-            {pending.length > 0 && <span className="email-tag"><CheckSquare size={11} />{pending.length}</span>}
-          </div>
-          <div className="lab-loc">
-            {[c.city, c.state].filter(Boolean).join(', ')}
-            {c.athletes != null && <> · {c.athletes} athletes</>}
-            {c.healthScore != null && <> · {c.healthScore}/9 health</>}
-          </div>
-        </div>
-        <div className="ob-stage-col">
-          <span className="stage-pill" style={c.graduated ? { background: 'var(--st-green-bg)', color: 'var(--st-green)', borderColor: 'rgba(29,178,113,0.3)' } : undefined}>
-            {c.graduated ? 'Graduated' : OB_STAGES[OB_INDEX[c.stageKey]].short}
-          </span>
-          {c.cs?.stage_override && <span className="ob-manual-tag" title="Stage set manually by CS">manual</span>}
-        </div>
-        <div className="ob-day-col">
-          <div className="day-badge"><span className="dn">{c.day != null ? c.day : '—'}</span><span className="dt">/ 90</span></div>
-        </div>
-        <div className="ob-ttv-col">
-          <div className="ttv-mini" style={{ color: ttvMeta.color, borderColor: ttvMeta.color }}>
-            TTV: {ttvMeta.label}{ttv.sessions != null && <> · {ttv.sessions}/{TTV_TARGET}</>}{ttv.daysSince != null && ttv.status === 'in_progress' && <> · d{ttv.daysSince}</>}
-          </div>
-        </div>
-        <div className={`lab-chev ${open ? 'open' : ''}`}><ChevronDown size={22} /></div>
-      </div>
-
-      {open && (
         <div className="ob-detail">
           {/* 1. Contact strip — who to reach, one line, at the top */}
           <div className="detail-block ob-contact-strip" style={{ gridColumn: '1 / -1' }}>
@@ -404,7 +414,53 @@ function ObCard({ c, catalog, open, onToggle, doneSet, doneMeta, onOpenTemplate,
             )}
           </div>
         </div>
-      )}
+  )
+}
+
+// ─── Full-width pipeline card — Smart Stack rows + Focus Queue ─────────────────
+// Drag to move stage; click anywhere (except the grip/advance) to open the drawer.
+function PipelineCard({ c, d, open, onToggle, onAdvance, onDragStart, children }) {
+  const edge = d.task ? (d.task.kind === 'red' ? 'var(--st-red)' : 'var(--st-orange)') : 'transparent'
+  return (
+    <div className={`ob-pcard ${d.needsAction ? 'need' : ''} ${open ? 'open' : ''}`}>
+      <div className="ob-pcard-row" draggable onDragStart={onDragStart} onClick={onToggle} style={{ borderLeftColor: edge }}>
+        <span className="ob-pcard-grip" title="Drag to move stage"><GripVertical size={16} /></span>
+        <span className="status-dot" style={{ background: STATUS_COLORS[c.healthColor || 'unknown'] }} />
+        <div className="ob-pcard-main">
+          <div className="ob-pcard-namerow">
+            <span className="ob-pcard-name">{c.name}</span>
+            {c.isNew && <span className="ob-tag-new">NEW</span>}
+            {d.pending > 0 && <span className="ob-tag-step">{d.pending} TO DO</span>}
+            {d.task && <span className={`ob-tag-task ${d.task.kind}`}>{d.task.text}</span>}
+          </div>
+          <div className="ob-pcard-meta">{d.meta || '—'}</div>
+        </div>
+        <div className="ob-pcard-day">{c.day != null ? c.day : '—'}<span> /90</span></div>
+        <div className="ob-pcard-chip" style={{ color: d.chipColor, borderColor: d.chipColor }}>{d.chipText}</div>
+        <button className="ob-adv-btn" onClick={e => { e.stopPropagation(); onAdvance() }}>{d.next ? 'ADVANCE →' : '✓ DONE'}</button>
+        <span className={`ob-pcard-chev ${open ? 'open' : ''}`}><ChevronDown size={18} /></span>
+      </div>
+      {open && children}
+    </div>
+  )
+}
+
+// ─── Compact Kanban card — drag between columns; click opens the drawer modal ──
+function KanbanCard({ c, d, onOpen, onAdvance, onDragStart }) {
+  const edge = d.task ? (d.task.kind === 'red' ? 'var(--st-red)' : 'var(--st-orange)') : 'var(--border)'
+  return (
+    <div className="ob-kcard" draggable onDragStart={onDragStart} onClick={onOpen} style={{ borderLeftColor: edge }}>
+      <div className="ob-kcard-top">
+        <span className="status-dot" style={{ background: STATUS_COLORS[c.healthColor || 'unknown'] }} />
+        <span className="ob-kcard-name">{c.name}</span>
+        {c.isNew && <span className="ob-tag-new">NEW</span>}
+      </div>
+      {d.task && <div><span className={`ob-tag-task ${d.task.kind}`} style={{ marginTop: 8 }}>{d.task.text}</span></div>}
+      <div className="ob-kcard-meta">{d.meta || '—'}</div>
+      <div className="ob-kcard-foot">
+        <span className="ob-kcard-chip" style={{ color: d.chipColor }}>{d.chipText}</span>
+        <button className="ob-adv-btn sm" onClick={e => { e.stopPropagation(); onAdvance() }}>{d.next ? 'ADVANCE →' : '✓'}</button>
+      </div>
     </div>
   )
 }
@@ -432,6 +488,11 @@ export default function Onboarding() {
   const [openId, setOpenId] = useState(null)
   const [modal, setModal] = useState(null)        // { customer, task, recVar }
   const [editorOpen, setEditorOpen] = useState(false)
+  const [pipelineView, setPipelineView] = useState('stack') // stack | board | focus
+  const [sortMode, setSortMode] = useState('priority')       // priority | health | days
+  const [expandedBuckets, setExpandedBuckets] = useState({ handoff: true })
+  const [focusStage, setFocusStage] = useState('handoff')
+  const dragId = useRef(null)
 
   const catalog = useMemo(() => mergeOverrides(overrides), [overrides])
 
@@ -723,6 +784,57 @@ export default function Onboarding() {
   const ttvTracked = eligible.length > 0
   const ttvCirc = 2 * Math.PI * 52
 
+  // ── Pipeline views: decorate, group by stage, sort, drag-to-advance ──────────
+  const decoMap = useMemo(() => {
+    const m = {}
+    ownerScoped.forEach(c => { m[c.dealId] = decorateCard(c, catalog) })
+    return m
+  }, [ownerScoped, catalog])
+
+  const byStage = useMemo(() => {
+    const m = {}
+    OB_STAGES.forEach(s => { m[s.key] = [] })
+    ownerScoped.forEach(c => { if (m[c.stageKey]) m[c.stageKey].push(c) })
+    const sc = id => decoMap[id]?.score ?? 0
+    const cmp = sortMode === 'health'
+      ? (a, b) => ((a.healthScore ?? 9) - (b.healthScore ?? 9)) || (sc(b.dealId) - sc(a.dealId))
+      : sortMode === 'days'
+        ? (a, b) => ((b.day || 0) - (a.day || 0)) || (sc(b.dealId) - sc(a.dealId))
+        : (a, b) => sc(b.dealId) - sc(a.dealId)
+    Object.values(m).forEach(arr => arr.sort(cmp))
+    return m
+  }, [ownerScoped, decoMap, sortMode])
+
+  // Weekly-activity rollup for the TTV hero card
+  const actCounts = { green: 0, yellow: 0, orange: 0, red: 0, unknown: 0 }
+  ownerScoped.forEach(c => { actCounts[c.healthColor] = (actCounts[c.healthColor] || 0) + 1 })
+  const actTotal = ownerScoped.length || 1
+  const greenPct = Math.round((actCounts.green / actTotal) * 100)
+  const pct = n => (n / actTotal) * 100 + '%'
+
+  const moveStage = (c, key) => {
+    if (!key || key === c.stageKey) return
+    saveCs(c.dealId, { stage_override: key }, [{ kind: 'stage_move', field: 'stage', old_value: c.stageKey, new_value: key }])
+  }
+  const onCardDragStart = (c) => (e) => {
+    dragId.current = c.dealId
+    try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(c.dealId)) } catch (_) { /* ignore */ }
+  }
+  const dropToStage = (key) => {
+    const id = dragId.current
+    dragId.current = null
+    if (id == null) return
+    const c = ownerScoped.find(x => x.dealId === id)
+    if (c) moveStage(c, key)
+  }
+  const allowDrop = (e) => e.preventDefault()
+  const toggleBucket = (k) => setExpandedBuckets(p => ({ ...p, [k]: !p[k] }))
+  const drawerProps = (c) => ({
+    c, catalog, doneSet: c.doneSet, doneMeta: doneMetaMap[c.dealId],
+    onOpenTemplate: openTemplate, onSetDone: (k, v) => setDone(c.dealId, k, v),
+    onSaveCs: (patch, events) => saveCs(c.dealId, patch, events), savingCs, hsPushState: hsPush[c.dealId],
+  })
+
   const csmName = director?.name || 'your USR lead'
   const tplCtx = (c) => ({
     owner: (c.contactName || '').split(' ')[0] || c.contactName || 'there',
@@ -824,6 +936,29 @@ export default function Onboarding() {
               <div className="ttv-hnote">{eligible.length} clock started · {notStarted} not started (set a kick-off date to start) · {TTV_WINDOW_DAYS}-day window from kick-off</div>
             </div>
           </div>
+          <div className="ob-wact">
+            <div className="ob-wact-head">Weekly Activity</div>
+            <div className="ob-wact-body">
+              <div className="ob-wact-figure">
+                <span className="ob-wact-pct">{greenPct}%</span>
+                <span className="ob-wact-lab">Green · active this week</span>
+                <span className="ob-wact-sub">{actCounts.green} of {ownerScoped.length} customers</span>
+              </div>
+              <div className="ob-wact-right">
+                <div className="ob-wact-bar">
+                  <span style={{ width: pct(actCounts.green), background: 'var(--st-green)' }} />
+                  <span style={{ width: pct(actCounts.yellow), background: 'var(--st-yellow)' }} />
+                  <span style={{ width: pct(actCounts.orange), background: 'var(--st-orange)' }} />
+                  <span style={{ width: pct(actCounts.red), background: 'var(--st-red)' }} />
+                </div>
+                <div className="ob-wact-chips">
+                  <div className="ob-wact-chip"><span className="d" style={{ background: 'var(--st-yellow)' }} /><b>{actCounts.yellow}</b><span>Light</span></div>
+                  <div className="ob-wact-chip"><span className="d" style={{ background: 'var(--st-orange)' }} /><b>{actCounts.orange}</b><span>Stale</span></div>
+                  <div className="ob-wact-chip"><span className="d" style={{ background: 'var(--st-red)' }} /><b>{actCounts.red}</b><span>At risk</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="ob-hero-stack">
@@ -844,60 +979,172 @@ export default function Onboarding() {
         </div>
       </div>
 
-      {/* Pipeline */}
-      <div className="section">
-        <div className="section-head"><h3>90-Day Pipeline</h3><span style={{ flex: 1 }} />{filter && <button className="btn btn-ghost" onClick={() => setFilter(null)}>Clear filter ✕</button>}</div>
-        <div className="pipeline">
-          {OB_STAGES.map((s, i) => (
-            <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <button className={`pl-stage ${filter === s.key ? 'active' : ''} ${counts[s.key] === 0 ? 'empty' : ''}`} onClick={() => setFilter(filter === s.key ? null : s.key)}>
-                <span className="pl-n">{counts[s.key]}</span>
-                <span className="pl-l">{s.short}</span>
-              </button>
-              {i < OB_STAGES.length - 1 && <span className="pl-arrow"><ArrowRight size={14} /></span>}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* New customers spotlight */}
-      {!filter && newCust.length > 0 && (
-        <div className="section">
-          <div className="collapsible spotlight">
-            <div className="collapse-head" style={{ cursor: 'default' }}>
-              <div className="collapse-badge">{newCust.length}</div>
-              <div>
-                <div className="collapse-title">New · Just Handed Off</div>
-                <div className="collapse-sub">Make first contact and book the kick-off call fast</div>
-              </div>
-            </div>
-            <div className="collapse-body">
-              {newCust.map(c => <ObCard key={c.dealId} c={c} catalog={catalog} open={openId === c.dealId} onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)} doneSet={c.doneSet} doneMeta={doneMetaMap[c.dealId]} onOpenTemplate={openTemplate} onSetDone={(k, v) => setDone(c.dealId, k, v)} onSaveCs={(patch, events) => saveCs(c.dealId, patch, events)} savingCs={savingCs} hsPushState={hsPush[c.dealId]} />)}
-            </div>
+      {/* 90-Day pipeline — Smart Stack / Kanban Board / Focus Queue */}
+      <div className="ob-pl">
+        <div className="ob-pl-head">
+          <h2 className="ob-pl-title">90-Day Pipeline</h2>
+          <div className="ob-seg">
+            <button className={pipelineView === 'stack' ? 'active' : ''} onClick={() => setPipelineView('stack')}><Layers size={14} />Smart Stack</button>
+            <button className={pipelineView === 'board' ? 'active' : ''} onClick={() => setPipelineView('board')}><LayoutGrid size={14} />Kanban Board</button>
+            <button className={pipelineView === 'focus' ? 'active' : ''} onClick={() => setPipelineView('focus')}><ListChecks size={14} />Focus Queue</button>
+          </div>
+          <div className="ob-pl-sort">
+            <label>Sort</label>
+            <select value={sortMode} onChange={e => setSortMode(e.target.value)}>
+              <option value="priority">Priority (open tasks first)</option>
+              <option value="health">Worst health first</option>
+              <option value="days">Most days in stage</option>
+            </select>
           </div>
         </div>
-      )}
 
-      {/* All onboarding customers */}
-      <div className="section">
-        <div className="section-head">
-          <h3>{filter ? OB_LABEL[filter] : 'All Onboarding Customers'}</h3>
-          <span className="count-pill">{list.length}</span>
-          <span style={{ flex: 1 }} />
-          <span style={{ fontSize: 13, color: 'var(--fg-muted)', fontFamily: 'var(--font-display)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sorted by attention needed</span>
-        </div>
-        {list.length === 0 ? (
+        {ownerScoped.length === 0 ? (
           <div className="stub" style={{ minHeight: 220 }}>
             <div className="stub-mark"><Activity size={26} /></div>
             <h2 style={{ fontSize: 24 }}>No customers in onboarding here</h2>
             <p style={{ maxWidth: 420 }}>{selected === 'all' ? 'No active customers are in early stages (On Deck → First 90 Days) right now.' : 'No early-stage customers owned by this person. Try “All deals.”'}</p>
           </div>
+        ) : pipelineView === 'stack' ? (
+          /* ── SMART STACK — collapsible stage buckets, needs-action first ── */
+          <div className="ob-stack">
+            {OB_STAGES.map(s => {
+              const arr = byStage[s.key]
+              const sm = STAGE_META[s.key] || {}
+              const needs = arr.filter(c => decoMap[c.dealId]?.needsAction)
+              const onTrack = arr.filter(c => !decoMap[c.dealId]?.needsAction)
+              const expanded = !!expandedBuckets[s.key]
+              return (
+                <div key={s.key} className="ob-bucket" onDragOver={allowDrop} onDrop={() => dropToStage(s.key)}>
+                  <div className="ob-bucket-head" onClick={() => toggleBucket(s.key)}>
+                    <span className="ob-bucket-badge" style={{ background: sm.accent }}>{arr.length}</span>
+                    <div className="ob-bucket-id">
+                      <div className="ob-bucket-title">{s.label}</div>
+                      <div className="ob-bucket-desc">{sm.desc}</div>
+                    </div>
+                    {needs.length > 0 && <span className="ob-bucket-need">{needs.length} NEED ACTION</span>}
+                    <span className={`ob-bucket-chev ${expanded ? 'open' : ''}`}><ChevronDown size={18} /></span>
+                  </div>
+                  {expanded && (
+                    <div className="ob-bucket-body">
+                      {needs.length > 0 && <div className="ob-grouplabel need">▲ Needs action · {needs.length}</div>}
+                      {needs.map(c => (
+                        <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
+                          onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
+                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onDragStart={onCardDragStart(c)}>
+                          <ObCardDetail {...drawerProps(c)} />
+                        </PipelineCard>
+                      ))}
+                      {onTrack.length > 0 && <div className="ob-grouplabel">On track · {onTrack.length}</div>}
+                      {onTrack.map(c => (
+                        <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
+                          onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
+                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onDragStart={onCardDragStart(c)}>
+                          <ObCardDetail {...drawerProps(c)} />
+                        </PipelineCard>
+                      ))}
+                      {arr.length === 0 && <div className="ob-bucket-empty">No customers in this stage · drag a card here to move it in.</div>}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ) : pipelineView === 'board' ? (
+          /* ── KANBAN BOARD — a column per stage, drag between ── */
+          <div className="ob-kanban">
+            {OB_STAGES.map(s => {
+              const arr = byStage[s.key]
+              const sm = STAGE_META[s.key] || {}
+              return (
+                <div key={s.key} className="ob-kcol" onDragOver={allowDrop} onDrop={() => dropToStage(s.key)}>
+                  <div className="ob-kcol-head">
+                    <span className="ob-kcol-accent" style={{ background: sm.accent }} />
+                    <span className="ob-kcol-label">{s.short}</span>
+                    <span className="ob-kcol-count">{arr.length}</span>
+                  </div>
+                  <div className="ob-kcol-body">
+                    {arr.map(c => (
+                      <KanbanCard key={c.dealId} c={c} d={decoMap[c.dealId]}
+                        onOpen={() => setOpenId(c.dealId)}
+                        onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onDragStart={onCardDragStart(c)} />
+                    ))}
+                    {arr.length === 0 && <div className="ob-kdrop">DROP HERE</div>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         ) : (
-          <div className="lab-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {list.map(c => <ObCard key={c.dealId} c={c} catalog={catalog} open={openId === c.dealId} onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)} doneSet={c.doneSet} doneMeta={doneMetaMap[c.dealId]} onOpenTemplate={openTemplate} onSetDone={(k, v) => setDone(c.dealId, k, v)} onSaveCs={(patch, events) => saveCs(c.dealId, patch, events)} savingCs={savingCs} hsPushState={hsPush[c.dealId]} />)}
+          /* ── FOCUS QUEUE — one stage at a time, "next up" featured ── */
+          <div className="ob-focus">
+            <div className="ob-focus-tabs">
+              {OB_STAGES.map(s => (
+                <button key={s.key} className={`ob-focus-tab ${focusStage === s.key ? 'active' : ''}`} onClick={() => setFocusStage(s.key)}>
+                  <span className="n">{byStage[s.key].length}</span><span className="l">{s.short}</span>
+                </button>
+              ))}
+            </div>
+            {(() => {
+              const arr = byStage[focusStage] || []
+              const sm = STAGE_META[focusStage] || {}
+              const needsCount = arr.filter(c => decoMap[c.dealId]?.needsAction).length
+              const featured = arr[0]
+              const rest = arr.slice(1)
+              return (
+                <div className="ob-focus-panel" onDragOver={allowDrop} onDrop={() => dropToStage(focusStage)}>
+                  <div className="ob-focus-phead">
+                    <div>
+                      <div className="ob-focus-ptitle">{OB_LABEL[focusStage]}</div>
+                      <div className="ob-focus-pdesc">{sm.desc}</div>
+                    </div>
+                    <div className="ob-focus-pcount"><span className="n">{arr.length}</span><span className="l">{needsCount} need action</span></div>
+                  </div>
+                  {featured ? (
+                    <>
+                      <div className="ob-next-lab">Next up · work this first</div>
+                      <PipelineCard c={featured} d={decoMap[featured.dealId]} open={openId === featured.dealId}
+                        onToggle={() => setOpenId(openId === featured.dealId ? null : featured.dealId)}
+                        onAdvance={() => moveStage(featured, decoMap[featured.dealId].next)} onDragStart={onCardDragStart(featured)}>
+                        <ObCardDetail {...drawerProps(featured)} />
+                      </PipelineCard>
+                      {rest.length > 0 && <div className="ob-grouplabel">Queue · {rest.length} remaining</div>}
+                      {rest.map(c => (
+                        <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
+                          onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
+                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onDragStart={onCardDragStart(c)}>
+                          <ObCardDetail {...drawerProps(c)} />
+                        </PipelineCard>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="ob-bucket-empty">No customers in this stage · drag a card here to move one in.</div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>
+
+      {/* Kanban opens the full drawer in a modal (columns are too narrow to expand inline) */}
+      {pipelineView === 'board' && openId != null && (() => {
+        const c = ownerScoped.find(x => x.dealId === openId)
+        if (!c) return null
+        return (
+          <div className="ob-drawer-overlay" onClick={() => setOpenId(null)}>
+            <div className="ob-drawer-modal" onClick={e => e.stopPropagation()}>
+              <div className="ob-drawer-modal-head">
+                <span className="status-dot" style={{ background: STATUS_COLORS[c.healthColor || 'unknown'] }} />
+                <span className="ob-drawer-modal-name">{c.name}</span>
+                <button className="ob-modal-x" onClick={() => setOpenId(null)} aria-label="Close">✕</button>
+              </div>
+              <div className="ob-card open" style={{ border: 'none', boxShadow: 'none' }}>
+                <ObCardDetail {...drawerProps(c)} />
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {modal && (
         <TemplateModal

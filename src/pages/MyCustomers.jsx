@@ -20,7 +20,21 @@ import { LabCard, HeroScore, HeroGreenRate } from './MyRegion'
 
 const COLOR_ORDER = { red: 0, orange: 1, yellow: 2, green: 3, unknown: 4 }
 
-const EMPTY_FILTERS = { product: [], dealStage: [], customerSegment: [], speedLabDirector: [], dealOwner: [], hardware: [] }
+const EMPTY_FILTERS = { product: [], dealStage: [], customerSegment: [], speedLabDirector: [], dealOwner: [], hardware: [], orgMatch: [] }
+
+// USR-DB org link quality (from backfill_health_all.py org resolution).
+// Surfaced so a wrong/missing link — the main source of bad activity/health
+// numbers — is visible and correctable.
+//   exact  : matched on hubspot_company_id (verified)        [needs migration]
+//   fuzzy  : matched by normalized name (verify it's right)  [needs migration]
+//   linked : org_id present but quality not yet classified   [pre-migration interim]
+//   none   : no USR org → activity/health can't be computed
+const ORG_MATCH_LABEL = { exact: 'Linked · verified', fuzzy: 'Fuzzy match · verify', linked: 'Linked', none: 'Not linked' }
+const ORG_MATCH_SORT  = { none: 0, fuzzy: 1, linked: 2, exact: 3 }
+// Prefer the persisted match_kind (post-migration); fall back to "linked vs not"
+// from the org_id stamped on the snapshot today.
+const orgLinkBucket = (account, snap) =>
+  account?.org_match_kind || ((account?.org_id ?? snap?.org_id) ? 'linked' : 'none')
 
 const SORT_FIELDS = [
   { value: 'health',  label: 'Health (worst→best)' },
@@ -182,13 +196,16 @@ export default function MyCustomers() {
   }
 
   // Build the customer rows (account + health snap + score) once.
+  // CANON: deal_id is the single key. Every weekly/monthly snapshot row carries
+  // deal_id (backfill_health_all.py), so the deal join is authoritative; the
+  // lab_name join is a legacy fallback only (and lab_name is no longer unique).
   const allRows = useMemo(() => accounts.map(a => {
-    const snap = (a.lab_name && latestSnapByLab[a.lab_name]) || (a.deal_id && latestSnapByDeal[a.deal_id]) || {
+    const snap = (a.deal_id != null && latestSnapByDeal[a.deal_id]) || (a.lab_name && latestSnapByLab[a.lab_name]) || {
       id: `deal-${a.deal_id || a.lab_name || Math.random()}`,
       lab_name: a.lab_name || a.company_name || '(unnamed customer)',
       health_color: 'unknown', days_since_activity: null,
     }
-    const score = (a.lab_name ? scoreMap[a.lab_name] : undefined) ?? (a.deal_id ? scoreMapDeal[a.deal_id] : undefined) ?? null
+    const score = (a.deal_id != null ? scoreMapDeal[a.deal_id] : undefined) ?? (a.lab_name ? scoreMap[a.lab_name] : undefined) ?? null
     return { account: a, snap, score }
   }), [accounts, latestSnapByLab, latestSnapByDeal, scoreMap, scoreMapDeal])
 
@@ -219,6 +236,16 @@ export default function MyCustomers() {
     }
   }, [accounts])
 
+  // Org-link options need the snapshot too (org_id lives on the snapshot today),
+  // so they're tallied over the built rows rather than raw accounts.
+  const orgMatchOpts = useMemo(() => {
+    const m = {}
+    allRows.forEach(({ account, snap }) => { const k = orgLinkBucket(account, snap); m[k] = (m[k] || 0) + 1 })
+    return Object.entries(m)
+      .sort((x, y) => (ORG_MATCH_SORT[x[0]] ?? 9) - (ORG_MATCH_SORT[y[0]] ?? 9))
+      .map(([value, count]) => ({ value, label: ORG_MATCH_LABEL[value] || value, count }))
+  }, [allRows])
+
   // Apply search + filters + sort.
   const customers = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -241,6 +268,7 @@ export default function MyCustomers() {
         const toks = splitHw(a.hardware)
         if (!toks.some(t => f.hardware.includes(t))) return false
       }
+      if (f.orgMatch.length && !f.orgMatch.includes(orgLinkBucket(a, r.snap))) return false
       return true
     }
 
@@ -356,6 +384,7 @@ export default function MyCustomers() {
         <FilterDropdown label="Speed Lab Director" options={opts.speedLabDirector} selected={filters.speedLabDirector} onChange={v => setFilter('speedLabDirector', v)} />
         <FilterDropdown label="Product"            options={opts.product}          selected={filters.product}          onChange={v => setFilter('product', v)} />
         <FilterDropdown label="Hardware"           options={opts.hardware}         selected={filters.hardware}         onChange={v => setFilter('hardware', v)} />
+        <FilterDropdown label="USR Org Link"       options={orgMatchOpts}          selected={filters.orgMatch}         onChange={v => setFilter('orgMatch', v)} />
         {(activeFilterCount > 0 || search) && <button className="mc-clear-all" onClick={clearAll}>Clear all</button>}
       </div>
 
