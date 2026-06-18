@@ -4,12 +4,16 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { daysSince, last8Weeks } from '../lib/metrics'
 import WeeklyMatrix from '../components/WeeklyMatrix'
+import CustomerDetail from '../components/CustomerDetail'
+import { HS_PUSHABLE, pushToHubspot, upsertCs, loadHubspotMeta, loadHubspotNotes, addHubspotNote } from '../lib/customerActions'
 import {
   ArrowLeft, ChevronDown, Plus, Send, Loader2,
   TrendingUp, TrendingDown, Minus, Bell, CheckCircle,
   Mail, Phone, Calendar, Cpu, Users, Building2,
   Zap, Activity, MessageSquare, MapPin,
 } from 'lucide-react'
+
+const EMPTY_SET = new Set()
 
 // ─── Status color maps ────────────────────────────────────────────────────────
 const STATUS_COLORS = { green: '#1DB271', yellow: '#FFD900', orange: '#F2810E', red: '#EC3642', unknown: '#ccc' }
@@ -319,11 +323,18 @@ function ActivityGrid({ last8 }) {
 // Lab customers that have no lab_name). `hideNotes`: hide the director-scoped
 // note logger / comms log (owner-filtered views aren't director-scoped).
 export function LabCard({ snap, allHistory, viewingId, stage, score = null, account: accountProp = undefined, hideNotes = false, onDraftEmail = null, comms = [] }) {
+  const { director } = useAuth()
   const [expanded, setExpanded]         = useState(false)
   const [logs, setLogs]                 = useState([])
   const [loadingLogs, setLoadingLogs]   = useState(false)
   const [monthlySnaps, setMonthlySnaps] = useState([])
   const [account, setAccount]           = useState(accountProp ?? null)
+  const [cs, setCs]                     = useState(null)        // onboarding_cs row for this deal
+  const [savingCs, setSavingCs]         = useState(false)
+  const [savingDeal, setSavingDeal]     = useState(false)
+  const [hsPush, setHsPush]             = useState(null)        // 'pushing' | 'ok' | error string
+
+  const actorName = director?.name || director?.email || null
 
   const color  = snap.health_color ?? 'unknown'
   const sColor = STATUS_COLORS[color] ?? '#ccc'
@@ -412,25 +423,140 @@ export function LabCard({ snap, allHistory, viewingId, stage, score = null, acco
     // CANON (lib/metrics.js): CS dashboard edits (onboarding_cs) override the
     // HubSpot-synced values everywhere, not just on the Onboarding page.
     try {
-      const { data: cs } = base.deal_id
+      const { data: csRow } = base.deal_id
         ? await supabase.from('onboarding_cs').select('*').eq('deal_id', base.deal_id).maybeSingle()
         : { data: null }
+      setCs(csRow || null)
       setAccount({
         ...base,
-        contact_name:       cs?.contact_name ?? base.contact_name,
-        contact_email:      cs?.contact_email ?? base.contact_email,
-        contact_phone:      cs?.contact_phone ?? base.contact_phone,
-        speed_lab_director: cs?.speed_lab_director ?? base.speed_lab_director,
-        kickoff_date:       cs?.kickoff_date ?? null,
+        contact_name:       csRow?.contact_name ?? base.contact_name,
+        contact_email:      csRow?.contact_email ?? base.contact_email,
+        contact_phone:      csRow?.contact_phone ?? base.contact_phone,
+        speed_lab_director: csRow?.speed_lab_director ?? base.speed_lab_director,
+        kickoff_date:       csRow?.kickoff_date ?? null,
       })
       return
     } catch { /* fall through to unmerged */ }
+    setCs(null)
     setAccount(base)
   }, [snap.lab_name, accountProp])
 
   useEffect(() => {
     if (expanded) { loadLogs(); loadMonthlySnaps(); loadAccount() }
   }, [expanded, loadLogs, loadMonthlySnaps, loadAccount])
+
+  // ── Shared CustomerDetail wiring (post-onboarding view) ─────────────────────
+  // Re-query just this card's account (after a HubSpot writeback), preserving the
+  // onboarding_cs merge. Mirrors loadAccount but always hits lab_accounts by deal.
+  const refetchAccount = useCallback(async () => {
+    const dealId = account?.deal_id
+    if (!dealId) return
+    const { data: base } = await supabase.from('lab_accounts').select('*').eq('deal_id', dealId).maybeSingle()
+    if (!base) return
+    try {
+      const { data: csRow } = await supabase.from('onboarding_cs').select('*').eq('deal_id', dealId).maybeSingle()
+      setCs(csRow || null)
+      setAccount({
+        ...base,
+        contact_name:       csRow?.contact_name ?? base.contact_name,
+        contact_email:      csRow?.contact_email ?? base.contact_email,
+        contact_phone:      csRow?.contact_phone ?? base.contact_phone,
+        speed_lab_director: csRow?.speed_lab_director ?? base.speed_lab_director,
+        kickoff_date:       csRow?.kickoff_date ?? null,
+      })
+    } catch { setAccount(base) }
+  }, [account?.deal_id])
+
+  // Save CS edits (contact/director/notes) — internal upsert + real-time HubSpot
+  // push for HS-owned fields. Faithful to Onboarding's saveCs, scoped to this card.
+  const onSaveCs = async (patch, events = []) => {
+    const dealId = account?.deal_id
+    if (!dealId) return
+    setSavingCs(true)
+    try {
+      await upsertCs(dealId, patch, events, actorName)
+      setCs(prev => ({ ...(prev || { deal_id: dealId }), ...patch, updated_by: actorName, updated_at: new Date().toISOString() }))
+    } catch (e) {
+      console.error('onboarding_cs save failed', e)
+      alert('Save failed — run the 2026-06-12 onboarding execution migration in Supabase, then retry.')
+      setSavingCs(false)
+      return
+    }
+    setSavingCs(false)
+    const changes = {}
+    HS_PUSHABLE.forEach(k => { if (k in patch) changes[k] = patch[k] })
+    if (!Object.keys(changes).length) return
+    setHsPush('pushing')
+    try {
+      const res = await pushToHubspot(dealId, changes)
+      if (res.ok) { setHsPush('ok'); await refetchAccount() }
+      else setHsPush(res.error || `HTTP ${res.status}`)
+    } catch (e) { setHsPush(String(e.message || e)) }
+  }
+
+  // Deal-property edits push straight to the HubSpot deal, then refetch this card.
+  const onSaveDeal = async (changes) => {
+    const dealId = account?.deal_id
+    if (!dealId || !changes || !Object.keys(changes).length) return
+    setSavingDeal(true)
+    try {
+      const res = await pushToHubspot(dealId, changes)
+      if (res.ok) await refetchAccount()
+      else alert(`HubSpot update failed: ${res.error || `HTTP ${res.status}`}`)
+    } catch (e) { alert(`HubSpot update failed: ${String(e.message || e)}`) }
+    setSavingDeal(false)
+  }
+
+  // This customer's weekly snapshots (oldest→newest) → Monthly Health Trend area.
+  const cWeeks = last8Weeks(last8)
+  // Build the universal customer object the shared drawer expects. Onboarding-only
+  // fields are inert here (isOnboarding=false hides the journey + TTV sections).
+  const customerDetail = account && {
+    name: heroName,
+    city: account.company_city, state: account.company_state,
+    dealId: account.deal_id,
+    contactName: account.contact_name,
+    email: account.contact_email,
+    phone: account.contact_phone,
+    director: account.speed_lab_director || account.director_name || null,
+    owner: account.deal_owner_name, ownerEmail: account.deal_owner_email,
+    hubspotStage: account.deal_stage_label,
+    healthColor: snap.health_color || 'unknown',
+    healthScore: latestMonthlyScore,
+    healthHistory: labHistory,
+    weeks: cWeeks,
+    athletes: last8.length ? (last8[last8.length - 1].athletes_added_week ?? null) : null,
+    logins: last8.length ? (last8[last8.length - 1].logins_week ?? null) : null,
+    datapoints: last8.length ? (last8[last8.length - 1].data_pts_week ?? null) : null,
+    prs: cWeeks.reduce((sum, w) => sum + (w.prs || 0), 0) || null,
+    // Deal properties (read by DealProperties) — same internal-name mapping as Onboarding.
+    amount: account.amount ?? null,
+    arr: account.amount ?? account.arr_amount ?? null,
+    contractEnd: account.renewal_date || null,
+    contractStart: account.contract_start_date || null,
+    contractYear: account.contract_year || null,
+    yearsAsSpeedLab: account.years_as_a_speed_lab || null,
+    renewalStatus: account.renewal_status || null,
+    churnRisk: account.churn_risk || null,
+    speedLabLevel: account.speed_lab_level || null,
+    speedLabStatus: account.speed_lab_status || null,
+    paymentStatus: account.payment_update || null,
+    paymentDate: account.payment_status || null,
+    paymentProcessor: account.payment_processor || null,
+    overdueAmount: account.overdue_amount ?? null,
+    onboardingCohort: account.onboarding_cohort || null,
+    removedAccess: account.removed_access_from_usr || null,
+    dealStageId: account.deal_stage || null,
+    product: account.product || null,
+    segment: account.customer_segment || null,
+    hardware: account.hardware || null,
+    // Base (HubSpot-synced) values, for the editor's diff + event log.
+    baseContactName: account.contact_name, baseEmail: account.contact_email,
+    basePhone: account.contact_phone, baseDirector: account.speed_lab_director || account.director_name || null,
+    cs,
+    // Onboarding-only fields — inert when isOnboarding=false.
+    graduated: true, stageKey: 'qbr', doneSet: EMPTY_SET, ttvSynced: null,
+  }
 
   return (
     <div className={`lab-card ${expanded ? 'open' : ''}`}>
@@ -494,242 +620,95 @@ export function LabCard({ snap, allHistory, viewingId, stage, score = null, acco
         </div>
       </div>
 
-      {/* ── Expanded panel ─────────────────────────────────────────────────── */}
+      {/* ── Expanded panel — the ONE shared customer drawer ────────────────── */}
       {expanded && (
-        <div className="lab-detail">
-
-          {/* ── Block 1: Account + Contacts ────────────────────────────── */}
-          <div className="detail-block">
-            <h4><Building2 size={14} />Account</h4>
-
-            <div className="contact-label">Details</div>
-
-            {/* Company name */}
-            <div className="contact-row">
-              <Building2 size={15} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
-              <span className="ct">
-                {account?.company_name
-                  ? <><b>Company</b> — {account.company_name}</>
-                  : <span style={{ color: 'var(--fg-subtle)' }}><b>Company</b> — not synced</span>
-                }
-              </span>
+        account == null ? (
+          <div className="lab-detail">
+            <div className="detail-block" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--fg-subtle)', fontSize: 13 }}>
+              <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Loading…
             </div>
-
-            {/* Contract end date */}
-            <div className="contact-row">
-              <Calendar size={15} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
-              <span className="ct">
-                {account?.renewal_date
-                  ? (() => {
-                      const d   = new Date(account.renewal_date + 'T00:00:00')
-                      const now = new Date()
-                      const daysUntil = Math.ceil((d - now) / 86400000)
-                      const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                      const urgency = daysUntil < 0 ? 'var(--st-red)' : daysUntil < 60 ? 'var(--st-orange)' : daysUntil < 90 ? 'var(--st-yellow)' : 'inherit'
-                      return (
-                        <>
-                          <b>Contract ends</b> — <span style={{ color: urgency }}>{label}</span>
-                          {daysUntil >= 0 && (
-                            <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--fg-subtle)' }}>
-                              ({daysUntil}d)
-                            </span>
-                          )}
-                          {daysUntil < 0 && (
-                            <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--st-red)' }}>
-                              (expired)
-                            </span>
-                          )}
-                        </>
-                      )
-                    })()
-                  : <span style={{ color: 'var(--fg-subtle)' }}><b>Contract end</b> — not synced</span>
-                }
-              </span>
-            </div>
-
-            {/* Deal status + commercial — from HubSpot (sync_hubspot.py) */}
-            {[
-              ['Stage',            account?.deal_stage_label],
-              ['Renewal status',   account?.renewal_status],
-              ['Speed Lab status', account?.speed_lab_status],
-              ['Churn risk',       account?.churn_risk],
-              ['Segment',          account?.customer_segment],
-              ['ARR',              account?.arr_amount != null ? `$${Number(account.arr_amount).toLocaleString()}` : null],
-              ['Payment',          account?.payment_status],
-              ['Director',         account?.speed_lab_director],
-              ['Day of 90',        (() => { const d = daysSince(account?.kickoff_date || account?.contract_start_date); return d != null ? `${d} / 90${account?.kickoff_date ? ' (from kick-off)' : ''}` : null })()],
-            ].map(([label, val]) => (
-              <div className="contact-row" key={label}>
-                <Activity size={15} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
-                <span className="ct">
-                  {val
-                    ? <><b>{label}</b> — {val}</>
-                    : <span style={{ color: 'var(--fg-subtle)' }}><b>{label}</b> — —</span>}
-                </span>
-              </div>
-            ))}
-
-            {/* Hardware / shipping address */}
-            <div className="contact-row">
-              <Cpu size={15} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
-              <span className="ct">
-                {account?.company_address
-                  ? (() => {
-                      const parts = [
-                        account.company_address,
-                        [account.company_city, account.company_state].filter(Boolean).join(', '),
-                        account.company_zip,
-                      ].filter(Boolean)
-                      return <><b>Hardware</b> — {parts.join(' ')}</>
-                    })()
-                  : account && (account.company_city || account.company_state)
-                    ? <><b>Hardware</b> — {[account.company_city, account.company_state].filter(Boolean).join(', ')} {account.company_zip || ''}</>
-                    : <span style={{ color: 'var(--fg-subtle)' }}><b>Hardware</b> — no address on file</span>
-                }
-              </span>
-            </div>
-
-            {/* Contact */}
-            <div className="contact-label" style={{ marginTop: 16 }}>Primary Contact</div>
-
-            {account?.contact_name || account?.contact_email ? (
-              <>
-                {account.contact_name && (
-                  <div className="contact-row">
-                    <Users size={15} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
-                    <span className="ct"><b>{account.contact_name}</b></span>
-                  </div>
-                )}
-                {account.contact_email && (
-                  <div className="contact-row">
-                    <Mail size={15} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
-                    <span className="ct">
-                      <a href={`mailto:${account.contact_email}`}
-                        style={{ color: 'var(--usr-pink)', textDecoration: 'none' }}
-                        onClick={e => e.stopPropagation()}
-                      >
-                        {account.contact_email}
-                      </a>
-                    </span>
-                  </div>
-                )}
-                {account.contact_phone && (
-                  <div className="contact-row" style={{ borderBottom: 0 }}>
-                    <Phone size={15} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
-                    <span className="ct">
-                      <a href={`tel:${account.contact_phone}`}
-                        style={{ color: 'inherit', textDecoration: 'none' }}
-                        onClick={e => e.stopPropagation()}
-                      >
-                        {account.contact_phone}
-                      </a>
-                    </span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="contact-row" style={{ borderBottom: 0 }}>
-                <Users size={14} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
-                <span className="ct" style={{ color: 'var(--fg-subtle)' }}>
-                  {account === null ? 'Loading...' : 'No contact on file — run HubSpot sync'}
-                </span>
-              </div>
-            )}
-
-            {/* Draft email (admin My Customers only — director view never passes onDraftEmail) */}
-            {onDraftEmail && (
-              <div style={{ marginTop: 14 }}>
-                <button
-                  className="btn btn-primary"
-                  style={{ padding: '8px 14px', fontSize: 12 }}
-                  disabled={!account?.contact_email}
-                  onClick={e => { e.stopPropagation(); onDraftEmail(account) }}
-                >
-                  <Mail size={13} /> Draft email
-                </button>
-                {!account?.contact_email && (
-                  <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--fg-subtle)' }}>
-                    no contact email on file
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Communications history (admin only) */}
-            {onDraftEmail && comms.length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <div className="contact-label">Recent comms · {comms.length}</div>
-                {comms.slice(0, 6).map(cm => (
-                  <div className="contact-row" key={cm.id} style={{ borderBottom: 0 }}>
-                    <Mail size={14} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
-                    <span className="ct">
-                      {cm.subject || '(no subject)'}
-                      <span style={{ color: 'var(--fg-subtle)' }}>
-                        {' · '}{new Date(cm.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        {cm.logged_by ? ` · ${String(cm.logged_by).split('@')[0]}` : ''}
-                      </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
+        ) : (
+          <>
+            <CustomerDetail
+              isOnboarding={false}
+              c={customerDetail}
+              onSaveCs={onSaveCs}
+              savingCs={savingCs}
+              hsPushState={hsPush}
+              onSaveDeal={onSaveDeal}
+              savingDeal={savingDeal}
+              loadMeta={loadHubspotMeta}
+              loadNotes={loadHubspotNotes}
+              addNote={addHubspotNote}
+            />
 
-          {/* ── Block 2: Weekly Activity — canonical shared matrix ───────── */}
-          <div className="detail-block">
-            <h4><Zap size={14} />Weekly Activity · 8 wks</h4>
-            <WeeklyMatrix weeks={last8Weeks(last8)} />
-          </div>
-
-          {/* ── Block 3: Monthly Health Trend ─────────────────────────── */}
-          <div className="detail-block">
-            <h4><Activity size={14} />Monthly Health Trend</h4>
-
-            <div className="trend-now">
-              <span className="v" style={{ color: latestMonthlyScore != null ? sColor : 'var(--fg-subtle)' }}>
-                {latestMonthlyScore !== null ? latestMonthlyScore : '—'}
-                <span style={{ fontSize: 18, color: 'var(--fg-subtle)', fontWeight: 700 }}>/9</span>
-              </span>
-              <span className="d" style={{ color: 'var(--fg-subtle)' }}>{scoreMonthLabel}</span>
-            </div>
-
-            <HealthTrendChart history={labHistory} />
-
-            {latestMonthlyScore === null && (
-              <p style={{ fontSize: 11, color: 'var(--fg-subtle)', marginTop: 8, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Requires monthly Athena run
-              </p>
-            )}
-          </div>
-
-          {/* ── Block 4: Outstanding Actions + Comms (full width) ──────── */}
-          <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <h4 style={{ margin: 0 }}><MessageSquare size={14} />Outstanding Actions &amp; Communications</h4>
-              {!hideNotes && <NoteLogger viewingId={viewingId} labName={snap.lab_name} onSaved={loadLogs} />}
-            </div>
-
-            <div className="no-actions">
-              <CheckCircle size={16} />
-              No pending messages — all up to date.
-            </div>
-
-            {logs.length > 0 && (
-              <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--fg-muted)', marginBottom: 10 }}>
-                  Log
+            {/* Director-scoped activity log — note logger + comms (drawer doesn't carry this) */}
+            <div className="lab-detail">
+              <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <h4 style={{ margin: 0 }}><MessageSquare size={14} />Outstanding Actions &amp; Communications</h4>
+                  {!hideNotes && <NoteLogger viewingId={viewingId} labName={snap.lab_name} onSaved={loadLogs} />}
                 </div>
-                <CommsLog logs={logs} loading={loadingLogs} />
-              </div>
-            )}
-            {logs.length === 0 && !loadingLogs && (
-              <div style={{ marginTop: 12 }}>
-                <CommsLog logs={[]} loading={false} />
-              </div>
-            )}
-          </div>
 
-        </div>
+                {onDraftEmail && (
+                  <div style={{ marginBottom: 14 }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ padding: '8px 14px', fontSize: 12 }}
+                      disabled={!account?.contact_email}
+                      onClick={e => { e.stopPropagation(); onDraftEmail(account) }}
+                    >
+                      <Mail size={13} /> Draft email
+                    </button>
+                    {!account?.contact_email && (
+                      <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--fg-subtle)' }}>
+                        no contact email on file
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {onDraftEmail && comms.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div className="contact-label">Recent comms · {comms.length}</div>
+                    {comms.slice(0, 6).map(cm => (
+                      <div className="contact-row" key={cm.id} style={{ borderBottom: 0 }}>
+                        <Mail size={14} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
+                        <span className="ct">
+                          {cm.subject || '(no subject)'}
+                          <span style={{ color: 'var(--fg-subtle)' }}>
+                            {' · '}{new Date(cm.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            {cm.logged_by ? ` · ${String(cm.logged_by).split('@')[0]}` : ''}
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="no-actions">
+                  <CheckCircle size={16} />
+                  No pending messages — all up to date.
+                </div>
+
+                {logs.length > 0 && (
+                  <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--fg-muted)', marginBottom: 10 }}>
+                      Log
+                    </div>
+                    <CommsLog logs={logs} loading={loadingLogs} />
+                  </div>
+                )}
+                {logs.length === 0 && !loadingLogs && (
+                  <div style={{ marginTop: 12 }}>
+                    <CommsLog logs={[]} loading={false} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )
       )}
     </div>
   )
