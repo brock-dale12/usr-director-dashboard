@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { fetchAllRows } from '../lib/fetchAll'
 import { openGmailDraft, logComm } from '../lib/gmailDraft'
+import { sendGmail, bodyToHtml, bodyToPlain } from '../lib/gmailSend'
 import TemplateEditor from './TemplateEditor'
 import {
   OB_STAGES, OB_INDEX, OB_LABEL, STATUS_COLORS, CATALOG, TTV_TARGET, TTV_WINDOW_DAYS,
@@ -254,21 +255,47 @@ function TemplateModal({ task, ctx, recVar, done, recurring, onMarkDone, onClose
   const [subject, setSubject] = useState(fillTokens(active.subject, ctx))
   const [body, setBody] = useState(fillTokens(active.body, ctx))
   const [flash, setFlash] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [sendErr, setSendErr] = useState('')
 
   // Re-seed copy when the variant changes.
   useEffect(() => {
     const a = isAuto ? task.variants[vKey] : task
     setSubject(fillTokens(a.subject, ctx)); setBody(fillTokens(a.body, ctx))
+    setSent(false); setSendErr('')
   }, [vKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const tmplKey = isAuto ? `${task.key}:${vKey}` : task.key
+
   const doCopy = () => {
-    const text = (active.subject ? 'Subject: ' + subject + '\n\n' : '') + body
+    // Markdown links degrade to "label (url)" for clipboard/plain paths.
+    const text = (active.subject ? 'Subject: ' + subject + '\n\n' : '') + bodyToPlain(body)
     if (navigator.clipboard) navigator.clipboard.writeText(text)
     setFlash(true); setTimeout(() => setFlash(false), 1800)
   }
   const openInGmail = () => {
-    openGmailDraft({ to: ctx.email, subject, body }) // BCC to HubSpot added automatically
-    logComm({ dealId: ctx.dealId, channel, subject, toEmail: ctx.email, templateKey: isAuto ? `${task.key}:${vKey}` : task.key, loggedBy: ctx.csm })
+    openGmailDraft({ to: ctx.email, subject, body: bodyToPlain(body) }) // BCC to HubSpot added automatically
+    logComm({ dealId: ctx.dealId, channel, subject, toEmail: ctx.email, templateKey: tmplKey, loggedBy: ctx.csm })
+  }
+  // One-click send AS the CSM via the Gmail API (HTML body, real links). The
+  // function BCCs HubSpot and records the send; no manual compose step.
+  const doSend = async () => {
+    setSending(true); setSendErr('')
+    try {
+      await sendGmail({
+        to: ctx.email, subject,
+        text: bodyToPlain(body), html: bodyToHtml(body),
+        dealId: ctx.dealId, labName: ctx.lab, templateKey: tmplKey,
+      })
+      setSent(true)
+    } catch (e) {
+      const code = e.code || ''
+      if (code === 'gmail_not_connected') setSendErr('Connect your Gmail under Settings first, then send.')
+      else if (code === 'gmail_reauth_required') setSendErr('Your Gmail connection expired — reconnect it under Settings.')
+      else setSendErr(String(e.message || e))
+    }
+    setSending(false)
   }
 
   return (
@@ -307,9 +334,17 @@ function TemplateModal({ task, ctx, recVar, done, recurring, onMarkDone, onClose
           <div className="ob-field-label">Message<span className="ob-edit-tag">prefilled · edit before you {channel === 'Text' ? 'copy' : 'send'}</span></div>
           <textarea className="ob-bodytext" value={body} onChange={e => setBody(e.target.value)} />
         </div>
+        {sendErr && <div className="ob-send-err" style={{ color: 'var(--st-red)', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '0 0 8px' }}><AlertTriangle size={14} />{sendErr}</div>}
         <div className="ob-modal-actions">
+          {channel === 'Email' && ctx.email && (sent ? (
+            <span className="ob-sent-chip"><CheckCircle size={15} />Sent</span>
+          ) : (
+            <button className="btn btn-primary" onClick={doSend} disabled={sending}>
+              {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}{sending ? 'Sending…' : 'Send now'}
+            </button>
+          ))}
           {channel === 'Email' && ctx.email && (
-            <button className="btn btn-primary" onClick={openInGmail}><Mail size={14} />Open in Gmail</button>
+            <button className="btn btn-outline" onClick={openInGmail}><Mail size={14} />Open in Gmail</button>
           )}
           <button className={`btn ${channel === 'Email' && ctx.email ? 'btn-outline' : 'btn-primary'}`} onClick={doCopy}><Copy size={14} />Copy {channel === 'Text' ? 'text' : 'message'}</button>
           <span className={`ob-copy-flash ${flash ? 'show' : ''}`}><Check size={14} />Copied</span>
