@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { fetchAllRows } from '../lib/fetchAll'
 import { openGmailDraft, logComm } from '../lib/gmailDraft'
-import { sendGmail, bodyToHtml, bodyToPlain } from '../lib/gmailSend'
+import { sendGmail, bodyToHtml, bodyToPlain, gmailSignature } from '../lib/gmailSend'
 import TemplateEditor from './TemplateEditor'
 import {
   OB_STAGES, OB_INDEX, OB_LABEL, STATUS_COLORS, CATALOG, TTV_TARGET, TTV_WINDOW_DAYS,
@@ -258,6 +258,8 @@ function TemplateModal({ task, ctx, recVar, done, recurring, onMarkDone, onClose
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [sendErr, setSendErr] = useState('')
+  const [sigHtml, setSigHtml] = useState('')
+  const [sigState, setSigState] = useState('idle') // idle|loading|ready|empty|notconnected|error
 
   // Re-seed copy when the variant changes.
   useEffect(() => {
@@ -265,6 +267,18 @@ function TemplateModal({ task, ctx, recVar, done, recurring, onMarkDone, onClose
     setSubject(fillTokens(a.subject, ctx)); setBody(fillTokens(a.body, ctx))
     setSent(false); setSendErr('')
   }, [vKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pull the CSM's Gmail signature so they can SEE what gets appended on send.
+  // Same source the send uses, so the preview matches the delivered email.
+  useEffect(() => {
+    if (channel !== 'Email' || !ctx.email) return
+    let alive = true
+    setSigState('loading')
+    gmailSignature()
+      .then(r => { if (!alive) return; const s = r.signature || ''; setSigHtml(s); setSigState(s ? 'ready' : 'empty') })
+      .catch(e => { if (!alive) return; setSigState(e.code === 'gmail_not_connected' ? 'notconnected' : 'error') })
+    return () => { alive = false }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const tmplKey = isAuto ? `${task.key}:${vKey}` : task.key
 
@@ -333,6 +347,19 @@ function TemplateModal({ task, ctx, recVar, done, recurring, onMarkDone, onClose
           )}
           <div className="ob-field-label">Message<span className="ob-edit-tag">prefilled · edit before you {channel === 'Text' ? 'copy' : 'send'}</span></div>
           <textarea className="ob-bodytext" value={body} onChange={e => setBody(e.target.value)} />
+          {channel === 'Email' && (
+            <>
+              <div className="ob-field-label">Signature<span className="ob-edit-tag">your Gmail signature · added automatically on send</span></div>
+              {sigState === 'loading' && <div style={{ fontSize: 12.5, color: 'var(--fg-subtle)' }}>Loading your Gmail signature…</div>}
+              {sigState === 'ready' && (
+                <div style={{ border: '1px solid var(--border, #e3e5e8)', borderRadius: 8, padding: '10px 12px', background: 'var(--bg-subtle, #fafafa)' }}
+                     dangerouslySetInnerHTML={{ __html: sigHtml }} />
+              )}
+              {sigState === 'empty' && <div style={{ fontSize: 12.5, color: 'var(--fg-subtle)' }}>No Gmail signature found on your account — set one in Gmail → Settings → Signature, then reopen this.</div>}
+              {sigState === 'notconnected' && <div style={{ fontSize: 12.5, color: 'var(--fg-subtle)' }}>Connect Gmail under Settings to add your signature.</div>}
+              {sigState === 'error' && <div style={{ fontSize: 12.5, color: 'var(--st-red)' }}>Couldn't load your signature — try reconnecting Gmail under Settings.</div>}
+            </>
+          )}
         </div>
         {sendErr && <div className="ob-send-err" style={{ color: 'var(--st-red)', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '0 0 8px' }}><AlertTriangle size={14} />{sendErr}</div>}
         <div className="ob-modal-actions">
