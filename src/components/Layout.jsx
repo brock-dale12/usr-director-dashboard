@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { MapPin, Mail, Trophy, Shield, LogOut, Users, Rocket, RefreshCw, CreditCard } from 'lucide-react'
+import { MapPin, Mail, Trophy, Shield, LogOut, Users, Rocket, RefreshCw, CreditCard, Settings as SettingsIcon } from 'lucide-react'
 import SpeedLabLogo from './SpeedLabLogo'
 import USRLogo from './USRLogo'
 
@@ -9,6 +9,7 @@ const DIRECTOR_NAV = [
   { to: '/',            icon: MapPin,  label: 'My Region',    exact: true  },
   { to: '/outreach',    icon: Mail,    label: 'Outreach Hub', exact: false },
   { to: '/leaderboard', icon: Trophy,  label: 'Leaderboard',  exact: false },
+  { to: '/settings',    icon: SettingsIcon, label: 'Settings', exact: false },
 ]
 
 // USR internal staff (Admin) nav — Customer Success Hub.
@@ -20,6 +21,7 @@ const ADMIN_NAV = [
   { to: '/payments',    icon: CreditCard, label: 'Payments',     exact: false },
   { to: '/admin',       icon: Shield,     label: 'Director View', exact: false },
   { to: '/leaderboard', icon: Trophy,     label: 'Leaderboard',  exact: false },
+  { to: '/settings',    icon: SettingsIcon, label: 'Settings',    exact: false },
 ]
 
 function NavItem({ to, icon: Icon, label, badge, exact }) {

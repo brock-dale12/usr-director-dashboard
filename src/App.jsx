@@ -10,6 +10,7 @@ import AdminOverview from './pages/AdminOverview'
 import Onboarding from './pages/Onboarding'
 import Renewals from './pages/Renewals'
 import Payments from './pages/Payments'
+import Settings from './pages/Settings'
 
 function Spinner() {
   return (
@@ -118,6 +119,15 @@ export default function App() {
           element={
             <ProtectedRoute adminOnly>
               <Layout><MyRegion /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        {/* Per-user account settings (Gmail connection, etc.) — any signed-in user */}
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Layout><Settings /></Layout>
             </ProtectedRoute>
           }
         />
