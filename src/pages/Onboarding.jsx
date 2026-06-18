@@ -8,13 +8,13 @@ import {
   OB_STAGES, OB_INDEX, OB_LABEL, STATUS_COLORS, CATALOG, TTV_TARGET, TTV_WINDOW_DAYS,
   mergeOverrides, gatingKeys, kickoffComplete, transitionVariant, recapVariant, fillTokens,
 } from '../lib/onboardingCatalog'
-import { TTVPanel, StageControl, DetailsEditor, effectiveTtv, TTV_STATUS_META } from '../components/OnboardingControls'
+import { TTVPanel, StageControl, DetailsEditor, DealDetails, effectiveTtv, TTV_STATUS_META } from '../components/OnboardingControls'
 import WeeklyMatrix from '../components/WeeklyMatrix'
 import FilterDropdown, { splitHw } from '../components/FilterDropdown'
 import {
   Activity, Bell, ChevronDown, Mail, Phone, Zap, Check, Settings,
   CheckCircle, Send, Copy, ArrowRight, User, Loader2, CheckSquare, Square, Pencil, StickyNote,
-  GripVertical, LayoutGrid, Layers, ListChecks, AlertTriangle, RefreshCw, Star, X, Trophy, Filter,
+  GripVertical, LayoutGrid, Layers, ListChecks, AlertTriangle, RefreshCw, Star, X, Trophy, Filter, Briefcase,
 } from 'lucide-react'
 
 // ─── Stage presentation: accent color + one-line description per journey stage ─
@@ -399,9 +399,10 @@ function decorateCard(c, catalog) {
 // ─── The expandable drawer (contact, activity/health, journey + task checklist) ─
 // Extracted so every pipeline view (Smart Stack, Kanban, Focus Queue) opens the
 // SAME rich detail — the place the actual CS work happens.
-function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState, scrollToTasks }) {
+function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState, scrollToTasks, onComplete, onSaveDeal, savingDeal }) {
   const nextLabel = c.graduated ? null : (OB_STAGES[OB_INDEX[c.stageKey] + 1]?.label || null)
   const [editOpen, setEditOpen] = useState(false)
+  const [dealOpen, setDealOpen] = useState(false)
   const [viewStage, setViewStage] = useState(null) // null = follow the customer's current stage
   const viewKey = viewStage || (c.graduated ? 'qbr' : c.stageKey)
   const tasksRef = useRef(null)
@@ -424,6 +425,7 @@ function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone
               <StickyNote size={14} />{c.cs?.notes && <i className="ob-notes-dot" />}
             </button>
             <button className="ob-icon-btn" onClick={() => setEditOpen(o => !o)} title="Edit contact, director, notes"><Pencil size={13} /></button>
+            <button className={`ob-icon-btn ${dealOpen ? 'on' : ''}`} onClick={() => setDealOpen(o => !o)} title="HubSpot deal details"><Briefcase size={13} /></button>
             {hsPushState === 'pushing' && <span className="ob-hs-status"><Loader2 size={12} className="animate-spin" />Pushing to HubSpot…</span>}
             {hsPushState === 'ok' && <span className="ob-hs-status ok"><CheckCircle size={12} />Pushed to HubSpot</span>}
             {hsPushState && hsPushState !== 'pushing' && hsPushState !== 'ok' && <span className="ob-hs-status err" title={hsPushState}>HubSpot push failed — saved internally</span>}
@@ -431,6 +433,11 @@ function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone
           {editOpen && (
             <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
               <DetailsEditor c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} onClose={() => setEditOpen(false)} />
+            </div>
+          )}
+          {dealOpen && (
+            <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
+              <DealDetails c={c} onSaveDeal={onSaveDeal} saving={savingDeal} />
             </div>
           )}
 
@@ -466,6 +473,7 @@ function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone
               {!c.graduated && nextLabel && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'none', letterSpacing: 0 }}>complete required steps → {nextLabel}</span>}
               <span style={{ flex: 1 }} />
               <StageControl c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} />
+              {onComplete && <button className="ob-complete-btn" onClick={onComplete} title="Finish onboarding — moves to My Customers"><Trophy size={13} />Complete</button>}
             </h4>
             <JourneyTimeline
               stageKey={c.stageKey} graduated={c.graduated} day={c.day}
@@ -582,6 +590,7 @@ export default function Onboarding() {
   const [ttvByDeal, setTtvByDeal] = useState({})
   const [csByDeal, setCsByDeal] = useState({})         // dealId -> onboarding_cs row
   const [savingCs, setSavingCs] = useState(false)
+  const [savingDeal, setSavingDeal] = useState(false)  // Deal-details panel push
   const [hsPush, setHsPush] = useState({})             // dealId -> 'pushing' | 'ok' | error string
   const [filters, setFilters] = useState(EMPTY_FILTERS) // multi-select, persisted
   const [filtersOpen, setFiltersOpen] = useState(false) // advanced-filters side drawer
@@ -833,6 +842,14 @@ export default function Onboarding() {
           product: a.product || null,
           segment: a.customer_segment || null,
           hardware: a.hardware || null,
+          // Deal details (HubSpot, read; a subset is push-editable via the Deal panel)
+          arr: a.arr_amount ?? null,
+          contractEnd: a.renewal_date || null,
+          paymentStatus: a.payment_status || null,
+          renewalStatus: a.renewal_status || null,
+          speedLabLevel: a.speed_lab_status || null,
+          contractYear: a.contract_year || null,
+          churnRisk: a.churn_risk || null,
           athletes: latest?.athletes_added_week ?? null,
           logins: latest?.logins_week ?? null,
           datapoints: latest?.data_pts_week ?? null,
@@ -1028,6 +1045,31 @@ export default function Onboarding() {
   // Focus Queue "Start tasks" — open the card scrolled to the task checklist.
   const startTasks = (c) => { setStartTasksId(c.dealId); setOpenId(c.dealId) }
 
+  // Deal-details edits → push straight to the HubSpot deal (admin-gated function),
+  // which mirrors back into lab_accounts; then refetch so the UI reflects it.
+  const saveDeal = async (dealId, changes) => {
+    if (!changes || !Object.keys(changes).length) return
+    setSavingDeal(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch('/.netlify/functions/hubspot-writeback', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ dealId, changes }),
+      })
+      const res = await r.json().catch(() => ({}))
+      if (r.ok && res.ok) {
+        const { data } = await supabase.from('lab_accounts').select('*')
+        if (data) setAccounts(data)
+      } else {
+        alert(`HubSpot update failed: ${res.error || (res.errors || []).join('; ') || `HTTP ${r.status}`}`)
+      }
+    } catch (e) {
+      alert(`HubSpot update failed: ${String(e.message || e)}`)
+    }
+    setSavingDeal(false)
+  }
+
   // ── Filters: per-user persistence (dashboard_prefs.onboarding_view) ──────────
   const setFilter = (key, vals) => setFilters(prev => ({ ...prev, [key]: vals }))
   const activeFilterCount = Object.values(filters).reduce((n, arr) => n + arr.length, 0)
@@ -1080,6 +1122,8 @@ export default function Onboarding() {
     onOpenTemplate: openTemplate, onSetDone: (k, v) => setDone(c.dealId, k, v),
     onSaveCs: (patch, events) => saveCs(c.dealId, patch, events), savingCs, hsPushState: hsPush[c.dealId],
     scrollToTasks: startTasksId === c.dealId,
+    onComplete: () => completeOnboarding(c),
+    onSaveDeal: (changes) => saveDeal(c.dealId, changes), savingDeal,
   })
 
   const csmName = director?.name || 'your USR lead'
@@ -1187,12 +1231,6 @@ export default function Onboarding() {
                 <span className="ob-wact-sub">{actCounts.green} of {scoped.length} customers</span>
               </div>
               <div className="ob-wact-right">
-                <div className="ob-wact-bar">
-                  <span style={{ width: pct(actCounts.green), background: 'var(--st-green)' }} />
-                  <span style={{ width: pct(actCounts.yellow), background: 'var(--st-yellow)' }} />
-                  <span style={{ width: pct(actCounts.orange), background: 'var(--st-orange)' }} />
-                  <span style={{ width: pct(actCounts.red), background: 'var(--st-red)' }} />
-                </div>
                 <div className="ob-wact-chips">
                   <button type="button" className={`ob-wact-chip ${heroActive('activity', 'green') ? 'on' : ''}`} onClick={() => toggleHero('activity', 'green')}><span className="d" style={{ background: 'var(--st-green)' }} /><b>{actCounts.green}</b><span>Active</span></button>
                   <button type="button" className={`ob-wact-chip ${heroActive('activity', 'yellow') ? 'on' : ''}`} onClick={() => toggleHero('activity', 'yellow')}><span className="d" style={{ background: 'var(--st-yellow)' }} /><b>{actCounts.yellow}</b><span>At risk</span></button>
@@ -1200,6 +1238,13 @@ export default function Onboarding() {
                   <button type="button" className={`ob-wact-chip ${heroActive('activity', 'red') ? 'on' : ''}`} onClick={() => toggleHero('activity', 'red')}><span className="d" style={{ background: 'var(--st-red)' }} /><b>{actCounts.red}</b><span>Critical</span></button>
                 </div>
               </div>
+            </div>
+            {/* Full-width color distribution bar, below the buckets */}
+            <div className="ob-wact-bar ob-wact-bar-full">
+              <span style={{ width: pct(actCounts.green), background: 'var(--st-green)' }} />
+              <span style={{ width: pct(actCounts.yellow), background: 'var(--st-yellow)' }} />
+              <span style={{ width: pct(actCounts.orange), background: 'var(--st-orange)' }} />
+              <span style={{ width: pct(actCounts.red), background: 'var(--st-red)' }} />
             </div>
           </div>
         </div>
@@ -1237,9 +1282,8 @@ export default function Onboarding() {
               <Filter size={14} />Filters{activeFilterCount > 0 && <span className="ob-filter-trigger-badge">{activeFilterCount}</span>}
             </button>
             <div className="ob-pl-sort">
-              <label>Sort</label>
-              <select value={sortMode} onChange={e => setSortMode(e.target.value)}>
-                <option value="priority">Priority (open tasks first)</option>
+              <select value={sortMode} onChange={e => setSortMode(e.target.value)} title="Sort by">
+                <option value="priority">Sort By</option>
                 <option value="health">Worst health first</option>
                 <option value="days">Most days in stage</option>
               </select>
@@ -1289,6 +1333,7 @@ export default function Onboarding() {
                       {needs.length > 0 && <div className="ob-grouplabel need">▲ Needs action · {needs.length}</div>}
                       {needs.map(c => (
                         <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
+                          focusMode onStartTasks={() => startTasks(c)}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
                           onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
                           <ObCardDetail {...drawerProps(c)} />
@@ -1297,6 +1342,7 @@ export default function Onboarding() {
                       {onTrack.length > 0 && <div className="ob-grouplabel">On track · {onTrack.length}</div>}
                       {onTrack.map(c => (
                         <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
+                          focusMode onStartTasks={() => startTasks(c)}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
                           onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
                           <ObCardDetail {...drawerProps(c)} />

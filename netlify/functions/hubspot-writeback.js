@@ -31,11 +31,21 @@ const SERVICE = process.env.SUPABASE_SERVICE_KEY
 const HS_TOKEN = process.env.HUBSPOT_ACCESS_TOKEN
 const HS = 'https://api.hubapi.com'
 
-// field → where it lives in HubSpot
-const DEAL_FIELDS = { kickoff_date: 'kickoff_date', speed_lab_director: 'speed_lab_director' }
+// Deal-level fields: dashboard field name → { hs: HubSpot deal property, lab:
+// lab_accounts column to mirror into (omit lab if it doesn't live there) }.
+// HubSpot property names mirror update_lab_accounts_from_deals.py (authoritative),
+// incl. the 'customer_segement' misspelling that exists in HubSpot.
+const DEAL_FIELDS = {
+  kickoff_date:       { hs: 'kickoff_date' }, // lives in onboarding_cs, not lab_accounts
+  speed_lab_director: { hs: 'speed_lab_director', lab: 'speed_lab_director' },
+  arr_amount:         { hs: 'arr_amount',         lab: 'arr_amount' },
+  contract_end_date:  { hs: 'contract_end_date',  lab: 'renewal_date' },
+  renewal_status:     { hs: 'renewal_status',     lab: 'renewal_status' },
+  customer_segment:   { hs: 'customer_segement',  lab: 'customer_segment' },
+  product:            { hs: 'product',            lab: 'product' },
+  payment_status:     { hs: 'payment_status',     lab: 'payment_status' },
+}
 const CONTACT_FIELDS = new Set(['contact_name', 'contact_email', 'contact_phone'])
-// fields mirrored back into lab_accounts after a successful push
-const MIRROR_TO_LAB_ACCOUNTS = new Set(['contact_name', 'contact_email', 'contact_phone', 'speed_lab_director'])
 
 const json = (statusCode, obj) => ({
   statusCode,
@@ -113,8 +123,8 @@ export const handler = async (event) => {
 
   // ── 1. Deal-level properties ─────────────────────────────────────────────
   const dealProps = {}
-  for (const [field, hsProp] of Object.entries(DEAL_FIELDS)) {
-    if (field in changes) dealProps[hsProp] = changes[field] ?? ''
+  for (const [field, m] of Object.entries(DEAL_FIELDS)) {
+    if (field in changes) dealProps[m.hs] = changes[field] ?? ''
   }
   if (Object.keys(dealProps).length) {
     try {
@@ -150,7 +160,12 @@ export const handler = async (event) => {
   if (pushed.length) {
     try {
       const mirror = {}
-      for (const k of Object.keys(changes)) if (MIRROR_TO_LAB_ACCOUNTS.has(k)) mirror[k] = changes[k]
+      // Deal fields → their lab_accounts column (where one exists)
+      for (const [field, m] of Object.entries(DEAL_FIELDS)) {
+        if (field in changes && m.lab) mirror[m.lab] = changes[field] ?? null
+      }
+      // Contact fields mirror to same-named lab_accounts columns
+      for (const k of CONTACT_FIELDS) if (k in changes) mirror[k] = changes[k]
       if (Object.keys(mirror).length && !errors.length) {
         await supaService(`lab_accounts?deal_id=eq.${encodeURIComponent(dealId)}`, 'PATCH', mirror)
       }
