@@ -10,7 +10,7 @@
 
 import {
   json, bearer, getUserFromToken, supaSelectOne, decrypt, refreshAccessToken,
-  buildRawMessage, logComm, HUBSPOT_LOG_BCC,
+  buildRawMessage, logComm, HUBSPOT_LOG_BCC, fetchGmailSignature, signatureToText,
 } from './_shared/google.js'
 
 export const handler = async (event) => {
@@ -44,10 +44,22 @@ export const handler = async (event) => {
     return json(401, { error: 'gmail_reauth_required', detail: String(e.message || e) })
   }
 
+  // Append the CSM's real Gmail signature so API sends match composing in Gmail.
+  let finalHtml = html || undefined
+  let finalText = text || ''
+  try {
+    const sig = await fetchGmailSignature(access, row.email)
+    if (sig) {
+      finalHtml = `${finalHtml || ''}<br><br>${sig}`
+      const sigText = signatureToText(sig)
+      if (sigText) finalText = `${finalText}\n\n${sigText}`
+    }
+  } catch { /* signature is best-effort — never block the send */ }
+
   const bcc = [HUBSPOT_LOG_BCC, extraBcc].filter(Boolean).join(', ')
   const raw = buildRawMessage({
     from: row.email, to: String(to).trim(), bcc,
-    subject: subject || '', text: text || '', html: html || undefined,
+    subject: subject || '', text: finalText, html: finalHtml,
   })
 
   try {
