@@ -21,8 +21,8 @@ export const TOKEN_ENC_KEY = process.env.TOKEN_ENC_KEY
 // HubSpot "log to CRM" BCC — keep in sync with src/lib/gmailDraft.js
 export const HUBSPOT_LOG_BCC = '39719331@bcc.hubspot.com'
 
-// Gmail scopes: send mail + identify the connected account.
-export const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send openid email'
+// Gmail scopes: send mail, read the user's signature, + identify the account.
+export const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.settings.basic openid email'
 
 export const json = (statusCode, obj) => ({
   statusCode,
@@ -156,6 +156,33 @@ export function emailFromIdToken(idToken) {
     const payload = JSON.parse(Buffer.from(String(idToken).split('.')[1], 'base64url').toString('utf8'))
     return payload.email || null
   } catch { return null }
+}
+
+// Fetch the user's Gmail signature (HTML) for the matching send-as alias, so API
+// sends match what they'd get composing in Gmail. Returns '' if none/unreadable.
+export async function fetchGmailSignature(accessToken, fromEmail) {
+  try {
+    const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs', {
+      headers: { authorization: `Bearer ${accessToken}` },
+    })
+    if (!r.ok) return ''
+    const data = await r.json()
+    const list = data.sendAs || []
+    const match =
+      list.find(s => (s.sendAsEmail || '').toLowerCase() === (fromEmail || '').toLowerCase()) ||
+      list.find(s => s.isPrimary) || list[0]
+    return (match && match.signature) || ''
+  } catch { return '' }
+}
+
+// HTML signature → rough plain-text equivalent for the text/plain MIME part.
+export function signatureToText(sigHtml) {
+  return String(sigHtml || '')
+    .replace(/<\/(p|div|tr)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n').trim()
 }
 
 // ── MIME ────────────────────────────────────────────────────────────────────────
