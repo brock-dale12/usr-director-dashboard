@@ -46,6 +46,9 @@ const DEAL_PROPS = [
   'dealname', 'dealstage', 'contract_end_date', 'product', 'contract_start_date',
   'contract_year', 'renewal_status', 'speed_lab_status', 'churn_risk',
   'customer_segement', 'payment_status', 'speed_lab_director', 'arr_amount',
+  // Added 2026-06-17b for the Deal Properties panel (verified internal names)
+  'amount', 'payment_update', 'payment_processor', 'overdue_amount',
+  'onboarding_cohort', 'removed_access_from_usr', 'speed_lab_level', 'years_as_a_speed_lab',
 ]
 
 const STOP_WORDS = new Set([
@@ -173,9 +176,18 @@ export const handler = async (event) => {
         speed_lab_status: p.speed_lab_status ?? null,
         churn_risk: p.churn_risk ?? null,
         customer_segment: p.customer_segement ?? null, // HubSpot misspelling
-        payment_status: p.payment_status ?? null,
+        payment_status: p.payment_status ?? null,       // "Payment Date" enum
         speed_lab_director: p.speed_lab_director ?? null,
         arr_amount: toNumber(p.arr_amount),
+        // Added 2026-06-17b
+        amount: toNumber(p.amount),                      // standard Amount → surfaced as ARR
+        payment_update: p.payment_update ?? null,        // "Payment Status" enum
+        payment_processor: p.payment_processor ?? null,
+        overdue_amount: toNumber(p.overdue_amount),
+        onboarding_cohort: p.onboarding_cohort ?? null,
+        removed_access_from_usr: p.removed_access_from_usr ?? null,
+        speed_lab_level: p.speed_lab_level ?? null,
+        years_as_a_speed_lab: p.years_as_a_speed_lab ?? null,
       }
     }
     const rows = Object.values(byLab)

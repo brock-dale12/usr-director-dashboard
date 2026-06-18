@@ -36,14 +36,35 @@ const HS = 'https://api.hubapi.com'
 // HubSpot property names mirror update_lab_accounts_from_deals.py (authoritative),
 // incl. the 'customer_segement' misspelling that exists in HubSpot.
 const DEAL_FIELDS = {
-  kickoff_date:       { hs: 'kickoff_date' }, // lives in onboarding_cs, not lab_accounts
-  speed_lab_director: { hs: 'speed_lab_director', lab: 'speed_lab_director' },
-  arr_amount:         { hs: 'arr_amount',         lab: 'arr_amount' },
-  contract_end_date:  { hs: 'contract_end_date',  lab: 'renewal_date' },
-  renewal_status:     { hs: 'renewal_status',     lab: 'renewal_status' },
-  customer_segment:   { hs: 'customer_segement',  lab: 'customer_segment' },
-  product:            { hs: 'product',            lab: 'product' },
-  payment_status:     { hs: 'payment_status',     lab: 'payment_status' },
+  kickoff_date:            { hs: 'kickoff_date' }, // lives in onboarding_cs, not lab_accounts
+  speed_lab_director:      { hs: 'speed_lab_director',      lab: 'speed_lab_director' },
+  amount:                  { hs: 'amount',                  lab: 'amount' },           // ARR (standard Amount)
+  arr_amount:              { hs: 'arr_amount',              lab: 'arr_amount' },
+  contract_end_date:       { hs: 'contract_end_date',       lab: 'renewal_date' },
+  contract_start_date:     { hs: 'contract_start_date',     lab: 'contract_start_date' },
+  contract_year:           { hs: 'contract_year',           lab: 'contract_year' },
+  years_as_a_speed_lab:    { hs: 'years_as_a_speed_lab',    lab: 'years_as_a_speed_lab' },
+  renewal_status:          { hs: 'renewal_status',          lab: 'renewal_status' },
+  churn_risk:              { hs: 'churn_risk',              lab: 'churn_risk' },
+  customer_segment:        { hs: 'customer_segement',       lab: 'customer_segment' },  // HubSpot misspelling
+  product:                 { hs: 'product',                 lab: 'product' },
+  speed_lab_level:         { hs: 'speed_lab_level',         lab: 'speed_lab_level' },
+  speed_lab_status:        { hs: 'speed_lab_status',        lab: 'speed_lab_status' },
+  hardware:                { hs: 'hardware',                lab: 'hardware' },
+  payment_update:          { hs: 'payment_update',          lab: 'payment_update' },    // "Payment Status"
+  payment_status:          { hs: 'payment_status',          lab: 'payment_status' },    // "Payment Date"
+  payment_processor:       { hs: 'payment_processor',       lab: 'payment_processor' },
+  overdue_amount:          { hs: 'overdue_amount',          lab: 'overdue_amount' },
+  onboarding_cohort:       { hs: 'onboarding_cohort',       lab: 'onboarding_cohort' },
+  removed_access_from_usr: { hs: 'removed_access_from_usr', lab: 'removed_access_from_usr' },
+  dealstage:               { hs: 'dealstage',               lab: 'deal_stage' }, // value = stage id
+  hubspot_owner_id:        { hs: 'hubspot_owner_id' },                            // value = owner id
+}
+// Deal stage id → label (mirror of update_lab_accounts_from_deals.py) for the mirror.
+const STAGE_LABELS = {
+  '126902544': 'On Deck', '126902545': 'Level Set', '126902546': 'First 30 Days',
+  '128794704': 'First 90 Days', '126902547': 'Months 4-7', '126890754': 'Upcoming Renewals',
+  '132288808': 'Renewals this Quarter', '132311327': 'Closed Won', '132311328': 'Closed Lost',
 }
 const CONTACT_FIELDS = new Set(['contact_name', 'contact_email', 'contact_phone'])
 
@@ -166,6 +187,8 @@ export const handler = async (event) => {
       }
       // Contact fields mirror to same-named lab_accounts columns
       for (const k of CONTACT_FIELDS) if (k in changes) mirror[k] = changes[k]
+      // Stage change → also refresh the human label
+      if ('dealstage' in changes) mirror.deal_stage_label = STAGE_LABELS[changes.dealstage] || changes.dealstage
       if (Object.keys(mirror).length && !errors.length) {
         await supaService(`lab_accounts?deal_id=eq.${encodeURIComponent(dealId)}`, 'PATCH', mirror)
       }

@@ -1827,6 +1827,29 @@ body {
 .ob-deal-val { font-size: 13px; font-weight: 600; color: var(--usr-black); overflow: hidden; text-overflow: ellipsis; }
 .ob-deal-val.muted { color: var(--fg-subtle); font-weight: 400; font-style: italic; }
 .ob-deal-field.ro .ob-deal-val { color: var(--fg-muted); }
-.ob-deal-input { font-size: 13px; border: 1px solid var(--border-strong); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.ob-deal-input { font-size: 13px; border: 1px solid var(--border-strong); border-radius: 6px; padding: 6px 8px; width: 100%; background: #fff; }
 .ob-deal-input:focus { outline: none; border-color: var(--usr-pink); }
-.ob-deal-note { font-size: 11px; color: var(--fg-subtle); line-height: 1.4; }
+.ob-deal-note { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--fg-subtle); line-height: 1.4; }
+.ob-deal-note.err { color: var(--st-red); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Onboarding page polish — 2026-06-17 (round 4: Deal Properties + Notes)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* Prominent Deal Properties / Notes action buttons in the customer drawer */
+.ob-hs-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.ob-bigbtn { display: inline-flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--usr-black); background: var(--bg-alt); border: 1.5px solid var(--border-strong); border-radius: 10px; padding: 13px 20px; cursor: pointer; transition: all var(--dur-fast); }
+.ob-bigbtn:hover { border-color: var(--usr-pink); color: var(--usr-pink); }
+.ob-bigbtn.on { background: var(--usr-black); color: #fff; border-color: var(--usr-black); }
+
+/* Notes panel */
+.ob-notes { display: flex; flex-direction: column; gap: 12px; }
+.ob-notes-add { display: flex; gap: 10px; align-items: flex-start; }
+.ob-notes-input { flex: 1; min-width: 0; font-size: 13px; font-family: var(--font-body); border: 1px solid var(--border-strong); border-radius: 8px; padding: 9px 11px; resize: vertical; }
+.ob-notes-input:focus { outline: none; border-color: var(--usr-pink); }
+.ob-notes-empty { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-subtle); padding: 6px 2px; }
+.ob-notes-empty.err { color: var(--st-red); }
+.ob-notes-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+.ob-note { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; }
+.ob-note-body { font-size: 13px; color: var(--usr-black); line-height: 1.45; white-space: pre-wrap; }
+.ob-note-when { font-size: 10.5px; color: var(--fg-subtle); margin-top: 6px; font-family: var(--font-display); font-weight: 700; letter-spacing: 0.04em; }
