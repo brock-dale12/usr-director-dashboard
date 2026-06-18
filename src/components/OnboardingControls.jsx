@@ -3,7 +3,7 @@ import {
   TTV_TARGET, TTV_WINDOW_DAYS, OB_STAGES, kickoffComplete,
 } from '../lib/onboardingCatalog'
 import {
-  Zap, Check, X, Pencil, Loader2, CalendarDays, Minus, Plus, AlertTriangle, CheckCircle, XCircle,
+  Zap, Check, X, Pencil, Loader2, CalendarDays, Minus, Plus, AlertTriangle, CheckCircle, XCircle, Briefcase,
 } from 'lucide-react'
 
 /**
@@ -253,6 +253,92 @@ export function DetailsEditor({ c, cs, onSave, saving, onClose }) {
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}Save</button>
       </div>
+    </div>
+  )
+}
+
+// ─── HubSpot Deal details (read all; editable subset pushes to HubSpot) ────────
+// Editable fields have confirmed HubSpot deal-property names (see sync script);
+// editing pushes through the hubspot-writeback function, which mirrors the value
+// back into lab_accounts. Read-only fields are pulled from HubSpot for reference;
+// the ones with no value yet ("—") aren't synced into the dashboard's data model.
+export function DealDetails({ c, onSaveDeal, saving }) {
+  const EDITABLE = [
+    { key: 'arr_amount',         label: 'ARR Amount',          type: 'number', val: c.arr },
+    { key: 'contract_end_date',  label: 'Contract End Date',   type: 'date',   val: c.contractEnd },
+    { key: 'renewal_status',     label: 'Renewal Status',                      val: c.renewalStatus },
+    { key: 'customer_segment',   label: 'Customer Segment',                    val: c.segment },
+    { key: 'product',            label: 'Product',                             val: c.product },
+    { key: 'speed_lab_director', label: 'Speed Lab Director',                  val: c.director },
+    { key: 'payment_status',     label: 'Payment Status',                      val: c.paymentStatus },
+  ]
+  const READONLY = [
+    ['Deal Owner',           c.owner],
+    ['Deal Stage',           c.hubspotStage],
+    ['Speed Lab Level',      c.speedLabLevel],
+    ['Hardware',             c.hardware],
+    ['Years as a Speed Lab', c.contractYear],
+    ['Kick-Off Date',        c.cs?.kickoff_date],
+    ['TTV · 5 Recaps',       c.recapCount != null ? `${c.recapCount} / 5` : null],
+    ['Churn Risk',           c.churnRisk],
+    ['Onboarding Cohort',    null],
+  ]
+  const NOT_SYNCED = ['Payment Processor', 'Payment Date', 'Overdue Amount', 'Removed Access']
+
+  const [edit, setEdit] = useState(false)
+  const seed = () => Object.fromEntries(EDITABLE.map(f => [f.key, f.val ?? '']))
+  const [vals, setVals] = useState(seed)
+
+  const open = () => { setVals(seed()); setEdit(true) }
+  const save = () => {
+    const changes = {}
+    EDITABLE.forEach(f => {
+      const next = (vals[f.key] ?? '').toString().trim()
+      const cur = (f.val ?? '').toString()
+      if (next !== cur) changes[f.key] = f.type === 'number' ? (next === '' ? null : Number(next)) : (next || null)
+    })
+    if (Object.keys(changes).length) onSaveDeal(changes)
+    setEdit(false)
+  }
+  const fmt = (key, v) => (v == null || v === '') ? '—' : (key === 'arr_amount' ? `$${Number(v).toLocaleString()}` : String(v))
+
+  return (
+    <div className="ob-deal">
+      <div className="ob-deal-head">
+        <Briefcase size={14} />HubSpot Deal
+        <span style={{ flex: 1 }} />
+        {edit ? (
+          <>
+            <button className="btn btn-ghost" onClick={() => setEdit(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}Save → HubSpot</button>
+          </>
+        ) : (
+          <button className="ob-icon-btn" onClick={open}><Pencil size={13} />Edit</button>
+        )}
+      </div>
+      <div className="ob-deal-grid">
+        {EDITABLE.map(f => (
+          <div className="ob-deal-field" key={f.key}>
+            <span className="ob-deal-lab">{f.label}<i className="ob-deal-sync">syncs to HubSpot</i></span>
+            {edit
+              ? <input className="ob-deal-input" type={f.type || 'text'} value={vals[f.key]} onChange={e => setVals(p => ({ ...p, [f.key]: e.target.value }))} />
+              : <span className="ob-deal-val">{fmt(f.key, f.val)}</span>}
+          </div>
+        ))}
+        {READONLY.map(([label, val]) => (
+          <div className="ob-deal-field ro" key={label}>
+            <span className="ob-deal-lab">{label}</span>
+            <span className="ob-deal-val">{val == null || val === '' ? '—' : String(val)}</span>
+          </div>
+        ))}
+        {NOT_SYNCED.map(label => (
+          <div className="ob-deal-field ro" key={label}>
+            <span className="ob-deal-lab">{label}</span>
+            <span className="ob-deal-val muted">— not synced yet</span>
+          </div>
+        ))}
+      </div>
+      <div className="ob-deal-note">Top fields edit straight to the HubSpot deal. Greyed fields are pulled from HubSpot (display-only). “Not synced yet” fields need their HubSpot field added to the daily sync before they appear here.</div>
     </div>
   )
 }

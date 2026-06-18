@@ -1802,3 +1802,31 @@ body {
 .ob-filters-drawer .mc-filter-btn { width: 100%; justify-content: space-between; border-radius: 8px; padding: 9px 12px; }
 .ob-filters-drawer .mc-filter-pop { position: static; min-width: 0; width: 100%; box-shadow: none; border: 1px solid var(--border); margin-top: 6px; max-height: 220px; }
 .ob-fd-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Onboarding page polish — 2026-06-17 (round 3)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* Weekly Activity: full-width distribution bar beneath the buckets */
+.ob-wact-bar-full { width: 100%; margin-top: 16px; height: 14px; }
+
+/* Drawer icon toggle active state (Deal details button) */
+.ob-icon-btn.on { color: var(--usr-pink); background: var(--st-red-bg); }
+
+/* "Complete" (finish onboarding) button in the journey header */
+.ob-complete-btn { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; font-family: var(--font-display); font-weight: 700; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; background: var(--st-green); border: 0; border-radius: 7px; padding: 6px 11px; cursor: pointer; }
+.ob-complete-btn:hover { background: #169a5f; }
+
+/* HubSpot Deal details panel */
+.ob-deal { display: flex; flex-direction: column; gap: 12px; }
+.ob-deal-head { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--usr-black); }
+.ob-deal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.ob-deal-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ob-deal-lab { font-family: var(--font-display); font-weight: 700; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-subtle); display: flex; align-items: center; gap: 6px; }
+.ob-deal-sync { font-style: normal; font-size: 8.5px; letter-spacing: 0.04em; color: var(--usr-pink); background: var(--st-red-bg); border-radius: 4px; padding: 1px 5px; }
+.ob-deal-val { font-size: 13px; font-weight: 600; color: var(--usr-black); overflow: hidden; text-overflow: ellipsis; }
+.ob-deal-val.muted { color: var(--fg-subtle); font-weight: 400; font-style: italic; }
+.ob-deal-field.ro .ob-deal-val { color: var(--fg-muted); }
+.ob-deal-input { font-size: 13px; border: 1px solid var(--border-strong); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.ob-deal-input:focus { outline: none; border-color: var(--usr-pink); }
+.ob-deal-note { font-size: 11px; color: var(--fg-subtle); line-height: 1.4; }
