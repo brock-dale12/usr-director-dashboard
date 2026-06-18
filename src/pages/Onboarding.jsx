@@ -5,6 +5,7 @@ import { fetchAllRows } from '../lib/fetchAll'
 import { openGmailDraft, logComm } from '../lib/gmailDraft'
 import { sendGmail, bodyToHtml, bodyToPlain, gmailSignature } from '../lib/gmailSend'
 import TemplateEditor from './TemplateEditor'
+import CustomerDetail from '../components/CustomerDetail'
 import {
   OB_STAGES, OB_INDEX, OB_LABEL, STATUS_COLORS, CATALOG, TTV_TARGET, TTV_WINDOW_DAYS,
   mergeOverrides, gatingKeys, kickoffComplete, transitionVariant, recapVariant, fillTokens,
@@ -456,126 +457,6 @@ function decorateCard(c, catalog) {
   ].filter(Boolean).join(' · ')
   const chipText = `TTV: ${ttvMeta.label}` + (ttv.status === 'in_progress' && ttv.sessions != null ? ` · ${ttv.sessions}/${TTV_TARGET}` : '')
   return { ttv, ttvMeta, overdue, pending, task, needsAction, score, next, meta, chipText, chipColor: ttvMeta.color }
-}
-
-// ─── The expandable drawer (contact, activity/health, journey + task checklist) ─
-// Extracted so every pipeline view (Smart Stack, Kanban, Focus Queue) opens the
-// SAME rich detail — the place the actual CS work happens.
-function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState, scrollToTasks, onComplete, onSaveDeal, savingDeal, loadMeta, loadNotes, addNote }) {
-  const nextLabel = c.graduated ? null : (OB_STAGES[OB_INDEX[c.stageKey] + 1]?.label || null)
-  const [editOpen, setEditOpen] = useState(false)
-  const [dealOpen, setDealOpen] = useState(false)
-  const [notesOpen, setNotesOpen] = useState(false)
-  const [viewStage, setViewStage] = useState(null) // null = follow the customer's current stage
-  const viewKey = viewStage || (c.graduated ? 'qbr' : c.stageKey)
-  const tasksRef = useRef(null)
-  // "Start tasks" (Focus Queue) opens the card scrolled to the task checklist.
-  useEffect(() => {
-    if (scrollToTasks && tasksRef.current) tasksRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [scrollToTasks])
-
-  return (
-        <div className="ob-detail">
-          {/* 1. Contact strip — who to reach, one line, at the top */}
-          <div className="detail-block ob-contact-strip" style={{ gridColumn: '1 / -1' }}>
-            <span className="ob-cs-name"><User size={14} />{c.contactName || 'No contact on file'}</span>
-            {c.email && <a className="ob-cs-item link" href={`mailto:${c.email}`} onClick={e => e.stopPropagation()}><Mail size={13} />{c.email}</a>}
-            {c.phone && <span className="ob-cs-item"><Phone size={13} />{c.phone}</span>}
-            <span className="ob-cs-item">Director: <b>{c.director || '—'}</b></span>
-            <span className="ob-cs-item">Owner: <b>{c.owner || '—'}</b></span>
-            <span style={{ flex: 1 }} />
-            <button className={`ob-icon-btn ob-notes-btn ${c.cs?.notes ? 'has-notes' : ''}`} onClick={() => setEditOpen(o => !o)} title={c.cs?.notes ? `Team notes: ${c.cs.notes.slice(0, 120)}` : 'No team notes yet — click to add'}>
-              <StickyNote size={14} />{c.cs?.notes && <i className="ob-notes-dot" />}
-            </button>
-            <button className="ob-icon-btn" onClick={() => setEditOpen(o => !o)} title="Edit contact, director, notes"><Pencil size={13} /></button>
-            {hsPushState === 'pushing' && <span className="ob-hs-status"><Loader2 size={12} className="animate-spin" />Pushing to HubSpot…</span>}
-            {hsPushState === 'ok' && <span className="ob-hs-status ok"><CheckCircle size={12} />Pushed to HubSpot</span>}
-            {hsPushState && hsPushState !== 'pushing' && hsPushState !== 'ok' && <span className="ob-hs-status err" title={hsPushState}>HubSpot push failed — saved internally</span>}
-          </div>
-          {editOpen && (
-            <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-              <DetailsEditor c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} onClose={() => setEditOpen(false)} />
-            </div>
-          )}
-          {/* Prominent HubSpot actions */}
-          <div className="detail-block ob-hs-actions" style={{ gridColumn: '1 / -1' }}>
-            <button className={`ob-bigbtn ${dealOpen ? 'on' : ''}`} onClick={() => { setDealOpen(o => !o); setNotesOpen(false) }}><Briefcase size={16} />Deal Properties</button>
-            <button className={`ob-bigbtn ${notesOpen ? 'on' : ''}`} onClick={() => { setNotesOpen(o => !o); setDealOpen(false) }}><MessageSquare size={16} />Notes</button>
-          </div>
-          {dealOpen && (
-            <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-              <DealProperties c={c} onSaveDeal={onSaveDeal} saving={savingDeal} loadMeta={loadMeta} />
-            </div>
-          )}
-          {notesOpen && (
-            <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-              <NotesPanel dealId={c.dealId} loadNotes={loadNotes} addNote={addNote} />
-            </div>
-          )}
-
-          {/* 2. Activity band — TTV / weekly activity / health, one compact row */}
-          <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-            <h4><Zap size={14} />Activity &amp; Health</h4>
-            <div className="ob-actband">
-              <div className="ob-actcard">
-                <div className="ob-actcard-title">Time-to-Value</div>
-                <TTVPanel c={c} cs={c.cs} synced={c.ttvSynced} onSave={onSaveCs} saving={savingCs} />
-              </div>
-              <div className="ob-actcard">
-                <div className="ob-actcard-title">Weekly Activity · 8w</div>
-                {c.weeks.length > 0
-                  ? <WeeklyMatrix weeks={c.weeks} />
-                  : <p style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>No weekly activity yet — appears once platform usage flows.</p>}
-              </div>
-              <div className="ob-actcard">
-                <div className="ob-actcard-title">Monthly Health Trend</div>
-                <div className="trend-now">
-                  <span className="v" style={{ color: 'var(--usr-pink)' }}>{c.healthScore != null ? c.healthScore : '—'}<span style={{ fontSize: 16, color: 'var(--fg-subtle)' }}>/9</span></span>
-                </div>
-                <HealthArea history={c.healthHistory} />
-                <div className="ob-actcard-foot">{c.athletes ?? '—'} athletes (30d) · {c.prs ?? '—'} PRs (8w)</div>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. Journey + tasks — red-dot timeline drives the task list below */}
-          <div className="detail-block" ref={tasksRef} style={{ gridColumn: '1 / -1' }}>
-            <h4>
-              <Activity size={14} />90-Day Journey · {c.graduated ? 'Graduated' : OB_LABEL[c.stageKey]}
-              {!c.graduated && nextLabel && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'none', letterSpacing: 0 }}>complete required steps → {nextLabel}</span>}
-              <span style={{ flex: 1 }} />
-              <StageControl c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} />
-              {onComplete && <button className="ob-complete-btn" onClick={onComplete} title="Finish onboarding — moves to My Customers"><Trophy size={13} />Complete</button>}
-            </h4>
-            <JourneyTimeline
-              stageKey={c.stageKey} graduated={c.graduated} day={c.day}
-              catalog={catalog} doneSet={doneSet}
-              viewKey={viewKey} onView={(k) => setViewStage(k === viewKey ? null : k)}
-            />
-            <div className="ob-tasks-head">
-              <Send size={13} />
-              Tasks · {OB_LABEL[viewKey]}
-              {viewKey === c.stageKey && !c.graduated && <span className="ob-sg-now">current stage</span>}
-              {viewStage && viewStage !== c.stageKey && (
-                <button className="ob-back-current" onClick={() => setViewStage(null)}>← back to current stage</button>
-              )}
-            </div>
-            {c.graduated && viewKey === 'qbr' && <div className="ob-no-actions"><CheckCircle size={16} style={{ color: 'var(--st-green)' }} />All onboarding steps complete — ready to graduate to ongoing success.</div>}
-            {(catalog[viewKey] || []).length === 0 && <div className="ob-no-actions"><CheckCircle size={16} />No steps queued for this stage — keep engaging weekly.</div>}
-            {(catalog[viewKey] || []).map(t => (
-              <TaskRow
-                key={t.key} task={t} c={c} isDone={doneSet.has(t.key)}
-                meta={doneMeta ? doneMeta[t.key] : null}
-                onOpen={() => onOpenTemplate(c, t)}
-                onToggle={(v) => onSetDone(t.key, v)}
-              />
-            ))}
-            {gatingKeys(viewKey).length > 0 && (
-              <div className="ob-gate-note">{gatingKeys(viewKey).filter(k => doneSet.has(k)).length}/{gatingKeys(viewKey).length} required steps done to advance</div>
-            )}
-          </div>
-        </div>
-  )
 }
 
 // ─── Full-width pipeline card — Smart Stack rows + Focus Queue ─────────────────
@@ -1449,7 +1330,7 @@ export default function Onboarding() {
                           focusMode onStartTasks={() => startTasks(c)}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
                           onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
-                          <ObCardDetail {...drawerProps(c)} />
+                          <CustomerDetail {...drawerProps(c)} />
                         </PipelineCard>
                       ))}
                       {onTrack.length > 0 && <div className="ob-grouplabel">On track · {onTrack.length}</div>}
@@ -1458,7 +1339,7 @@ export default function Onboarding() {
                           focusMode onStartTasks={() => startTasks(c)}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
                           onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
-                          <ObCardDetail {...drawerProps(c)} />
+                          <CustomerDetail {...drawerProps(c)} />
                         </PipelineCard>
                       ))}
                       {arr.length === 0 && <div className="ob-bucket-empty">No customers in this stage · drag a card here to move it in.</div>}
@@ -1525,7 +1406,7 @@ export default function Onboarding() {
                         focusMode onStartTasks={() => startTasks(featured)}
                         onToggle={() => setOpenId(openId === featured.dealId ? null : featured.dealId)}
                         onAdvance={() => moveStage(featured, decoMap[featured.dealId].next)} onComplete={() => completeOnboarding(featured)} onDragStart={onCardDragStart(featured)}>
-                        <ObCardDetail {...drawerProps(featured)} />
+                        <CustomerDetail {...drawerProps(featured)} />
                       </PipelineCard>
                       {rest.length > 0 && <div className="ob-grouplabel">Queue · {rest.length} remaining</div>}
                       {rest.map(c => (
@@ -1533,7 +1414,7 @@ export default function Onboarding() {
                           focusMode onStartTasks={() => startTasks(c)}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
                           onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
-                          <ObCardDetail {...drawerProps(c)} />
+                          <CustomerDetail {...drawerProps(c)} />
                         </PipelineCard>
                       ))}
                     </>
@@ -1583,7 +1464,7 @@ export default function Onboarding() {
                 <button className="ob-modal-x" onClick={() => setOpenId(null)} aria-label="Close">✕</button>
               </div>
               <div className="ob-card open" style={{ border: 'none', boxShadow: 'none' }}>
-                <ObCardDetail {...drawerProps(c)} />
+                <CustomerDetail {...drawerProps(c)} />
               </div>
             </div>
           </div>
