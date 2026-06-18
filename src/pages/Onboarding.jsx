@@ -8,13 +8,13 @@ import {
   OB_STAGES, OB_INDEX, OB_LABEL, STATUS_COLORS, CATALOG, TTV_TARGET, TTV_WINDOW_DAYS,
   mergeOverrides, gatingKeys, kickoffComplete, transitionVariant, recapVariant, fillTokens,
 } from '../lib/onboardingCatalog'
-import { TTVPanel, StageControl, DetailsEditor, DealDetails, effectiveTtv, TTV_STATUS_META } from '../components/OnboardingControls'
+import { TTVPanel, StageControl, DetailsEditor, DealProperties, NotesPanel, effectiveTtv, TTV_STATUS_META } from '../components/OnboardingControls'
 import WeeklyMatrix from '../components/WeeklyMatrix'
 import FilterDropdown, { splitHw } from '../components/FilterDropdown'
 import {
   Activity, Bell, ChevronDown, Mail, Phone, Zap, Check, Settings,
   CheckCircle, Send, Copy, ArrowRight, User, Loader2, CheckSquare, Square, Pencil, StickyNote,
-  GripVertical, LayoutGrid, Layers, ListChecks, AlertTriangle, RefreshCw, Star, X, Trophy, Filter, Briefcase,
+  GripVertical, LayoutGrid, Layers, ListChecks, AlertTriangle, RefreshCw, Star, X, Trophy, Filter, Briefcase, MessageSquare,
 } from 'lucide-react'
 
 // ─── Stage presentation: accent color + one-line description per journey stage ─
@@ -399,10 +399,11 @@ function decorateCard(c, catalog) {
 // ─── The expandable drawer (contact, activity/health, journey + task checklist) ─
 // Extracted so every pipeline view (Smart Stack, Kanban, Focus Queue) opens the
 // SAME rich detail — the place the actual CS work happens.
-function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState, scrollToTasks, onComplete, onSaveDeal, savingDeal }) {
+function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState, scrollToTasks, onComplete, onSaveDeal, savingDeal, loadMeta, loadNotes, addNote }) {
   const nextLabel = c.graduated ? null : (OB_STAGES[OB_INDEX[c.stageKey] + 1]?.label || null)
   const [editOpen, setEditOpen] = useState(false)
   const [dealOpen, setDealOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
   const [viewStage, setViewStage] = useState(null) // null = follow the customer's current stage
   const viewKey = viewStage || (c.graduated ? 'qbr' : c.stageKey)
   const tasksRef = useRef(null)
@@ -425,7 +426,6 @@ function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone
               <StickyNote size={14} />{c.cs?.notes && <i className="ob-notes-dot" />}
             </button>
             <button className="ob-icon-btn" onClick={() => setEditOpen(o => !o)} title="Edit contact, director, notes"><Pencil size={13} /></button>
-            <button className={`ob-icon-btn ${dealOpen ? 'on' : ''}`} onClick={() => setDealOpen(o => !o)} title="HubSpot deal details"><Briefcase size={13} /></button>
             {hsPushState === 'pushing' && <span className="ob-hs-status"><Loader2 size={12} className="animate-spin" />Pushing to HubSpot…</span>}
             {hsPushState === 'ok' && <span className="ob-hs-status ok"><CheckCircle size={12} />Pushed to HubSpot</span>}
             {hsPushState && hsPushState !== 'pushing' && hsPushState !== 'ok' && <span className="ob-hs-status err" title={hsPushState}>HubSpot push failed — saved internally</span>}
@@ -435,9 +435,19 @@ function ObCardDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone
               <DetailsEditor c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} onClose={() => setEditOpen(false)} />
             </div>
           )}
+          {/* Prominent HubSpot actions */}
+          <div className="detail-block ob-hs-actions" style={{ gridColumn: '1 / -1' }}>
+            <button className={`ob-bigbtn ${dealOpen ? 'on' : ''}`} onClick={() => { setDealOpen(o => !o); setNotesOpen(false) }}><Briefcase size={16} />Deal Properties</button>
+            <button className={`ob-bigbtn ${notesOpen ? 'on' : ''}`} onClick={() => { setNotesOpen(o => !o); setDealOpen(false) }}><MessageSquare size={16} />Notes</button>
+          </div>
           {dealOpen && (
             <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-              <DealDetails c={c} onSaveDeal={onSaveDeal} saving={savingDeal} />
+              <DealProperties c={c} onSaveDeal={onSaveDeal} saving={savingDeal} loadMeta={loadMeta} />
+            </div>
+          )}
+          {notesOpen && (
+            <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
+              <NotesPanel dealId={c.dealId} loadNotes={loadNotes} addNote={addNote} />
             </div>
           )}
 
@@ -842,14 +852,24 @@ export default function Onboarding() {
           product: a.product || null,
           segment: a.customer_segment || null,
           hardware: a.hardware || null,
-          // Deal details (HubSpot, read; a subset is push-editable via the Deal panel)
-          arr: a.arr_amount ?? null,
+          // Deal properties (HubSpot) — verified internal-name mapping (2026-06-17b)
+          amount: a.amount ?? null,                  // standard "Amount" → surfaced as ARR
+          arr: a.amount ?? a.arr_amount ?? null,     // ARR display = Amount (fallback arr_amount)
           contractEnd: a.renewal_date || null,
-          paymentStatus: a.payment_status || null,
-          renewalStatus: a.renewal_status || null,
-          speedLabLevel: a.speed_lab_status || null,
+          contractStart: a.contract_start_date || null,
           contractYear: a.contract_year || null,
+          yearsAsSpeedLab: a.years_as_a_speed_lab || null,
+          renewalStatus: a.renewal_status || null,
           churnRisk: a.churn_risk || null,
+          speedLabLevel: a.speed_lab_level || null,  // corrected (was speed_lab_status)
+          speedLabStatus: a.speed_lab_status || null,
+          paymentStatus: a.payment_update || null,   // corrected: real "Payment Status"
+          paymentDate: a.payment_status || null,     // HubSpot "Payment Date" enum
+          paymentProcessor: a.payment_processor || null,
+          overdueAmount: a.overdue_amount ?? null,
+          onboardingCohort: a.onboarding_cohort || null,
+          removedAccess: a.removed_access_from_usr || null,
+          dealStageId: a.deal_stage || null,
           athletes: latest?.athletes_added_week ?? null,
           logins: latest?.logins_week ?? null,
           datapoints: latest?.data_pts_week ?? null,
@@ -1070,6 +1090,36 @@ export default function Onboarding() {
     setSavingDeal(false)
   }
 
+  // Live HubSpot dropdown data (enum options + owners + stages), fetched once.
+  const metaRef = useRef(null)
+  const loadMeta = async () => {
+    if (metaRef.current) return metaRef.current
+    const { data: { session } } = await supabase.auth.getSession()
+    const r = await fetch('/.netlify/functions/hubspot-meta', { headers: { authorization: `Bearer ${session?.access_token || ''}` } })
+    const res = await r.json().catch(() => ({}))
+    if (r.ok && res.ok) { metaRef.current = res; return res }
+    throw new Error(res.error || `HTTP ${r.status}`)
+  }
+
+  // HubSpot timeline notes for a deal (read + post).
+  const loadNotes = async (dealId) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const r = await fetch(`/.netlify/functions/hubspot-notes?dealId=${encodeURIComponent(dealId)}`, { headers: { authorization: `Bearer ${session?.access_token || ''}` } })
+    const res = await r.json().catch(() => ({}))
+    if (r.ok && res.ok) return res.notes || []
+    throw new Error(res.error || `HTTP ${r.status}`)
+  }
+  const addNote = async (dealId, body) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const r = await fetch('/.netlify/functions/hubspot-notes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify({ dealId, body }),
+    })
+    const res = await r.json().catch(() => ({}))
+    if (!(r.ok && res.ok)) throw new Error(res.error || `HTTP ${r.status}`)
+  }
+
   // ── Filters: per-user persistence (dashboard_prefs.onboarding_view) ──────────
   const setFilter = (key, vals) => setFilters(prev => ({ ...prev, [key]: vals }))
   const activeFilterCount = Object.values(filters).reduce((n, arr) => n + arr.length, 0)
@@ -1124,6 +1174,7 @@ export default function Onboarding() {
     scrollToTasks: startTasksId === c.dealId,
     onComplete: () => completeOnboarding(c),
     onSaveDeal: (changes) => saveDeal(c.dealId, changes), savingDeal,
+    loadMeta, loadNotes, addNote,
   })
 
   const csmName = director?.name || 'your USR lead'

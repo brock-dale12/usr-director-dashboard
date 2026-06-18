@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   TTV_TARGET, TTV_WINDOW_DAYS, OB_STAGES, kickoffComplete,
 } from '../lib/onboardingCatalog'
 import {
-  Zap, Check, X, Pencil, Loader2, CalendarDays, Minus, Plus, AlertTriangle, CheckCircle, XCircle, Briefcase,
+  Zap, Check, X, Pencil, Loader2, CalendarDays, Minus, Plus, AlertTriangle, CheckCircle, XCircle, Briefcase, MessageSquare,
 } from 'lucide-react'
 
 /**
@@ -257,55 +257,85 @@ export function DetailsEditor({ c, cs, onSave, saving, onClose }) {
   )
 }
 
-// ─── HubSpot Deal details (read all; editable subset pushes to HubSpot) ────────
-// Editable fields have confirmed HubSpot deal-property names (see sync script);
-// editing pushes through the hubspot-writeback function, which mirrors the value
-// back into lab_accounts. Read-only fields are pulled from HubSpot for reference;
-// the ones with no value yet ("—") aren't synced into the dashboard's data model.
-export function DealDetails({ c, onSaveDeal, saving }) {
-  const EDITABLE = [
-    { key: 'arr_amount',         label: 'ARR Amount',          type: 'number', val: c.arr },
-    { key: 'contract_end_date',  label: 'Contract End Date',   type: 'date',   val: c.contractEnd },
-    { key: 'renewal_status',     label: 'Renewal Status',                      val: c.renewalStatus },
-    { key: 'customer_segment',   label: 'Customer Segment',                    val: c.segment },
-    { key: 'product',            label: 'Product',                             val: c.product },
-    { key: 'speed_lab_director', label: 'Speed Lab Director',                  val: c.director },
-    { key: 'payment_status',     label: 'Payment Status',                      val: c.paymentStatus },
-  ]
-  const READONLY = [
-    ['Deal Owner',           c.owner],
-    ['Deal Stage',           c.hubspotStage],
-    ['Speed Lab Level',      c.speedLabLevel],
-    ['Hardware',             c.hardware],
-    ['Years as a Speed Lab', c.contractYear],
-    ['Kick-Off Date',        c.cs?.kickoff_date],
-    ['TTV · 5 Recaps',       c.recapCount != null ? `${c.recapCount} / 5` : null],
-    ['Churn Risk',           c.churnRisk],
-    ['Onboarding Cohort',    null],
-  ]
-  const NOT_SYNCED = ['Payment Processor', 'Payment Date', 'Overdue Amount', 'Removed Access']
-
+// ─── HubSpot Deal Properties (live dropdowns, two-way) ────────────────────────
+// Current values come from the cohort row; dropdown options are fetched live from
+// HubSpot via loadMeta() so they mirror HubSpot exactly. Editing pushes changed
+// fields straight to the HubSpot deal (hubspot-writeback), which mirrors back into
+// lab_accounts. Verified internal names: hubspot-deal-property-map-2026-06-17.md.
+export function DealProperties({ c, onSaveDeal, saving, loadMeta }) {
   const [edit, setEdit] = useState(false)
-  const seed = () => Object.fromEntries(EDITABLE.map(f => [f.key, f.val ?? '']))
-  const [vals, setVals] = useState(seed)
+  const [meta, setMeta] = useState(null)
+  const [metaState, setMetaState] = useState('idle') // idle|loading|ready|error
+  const [metaErr, setMetaErr] = useState('')
+  const [vals, setVals] = useState({})
 
-  const open = () => { setVals(seed()); setEdit(true) }
+  // field key (HubSpot internal name) → kind + meta option-set + current value
+  const FIELDS = [
+    { key: 'amount',                  label: 'ARR (Amount)',         kind: 'number', base: c.amount },
+    { key: 'overdue_amount',          label: 'Overdue Amount',       kind: 'number', base: c.overdueAmount },
+    { key: 'contract_start_date',     label: 'Contract Start Date',  kind: 'date',   base: c.contractStart },
+    { key: 'contract_end_date',       label: 'Contract End Date',    kind: 'date',   base: c.contractEnd },
+    { key: 'dealstage',               label: 'Deal Stage',           kind: 'stage',  base: c.dealStageId, display: c.hubspotStage },
+    { key: 'hubspot_owner_id',        label: 'Deal Owner',           kind: 'owner',  display: c.owner },
+    { key: 'product',                 label: 'Product',              kind: 'enum', meta: 'product',          base: c.product },
+    { key: 'customer_segment',        label: 'Customer Segment',     kind: 'enum', meta: 'customer_segement', base: c.segment },
+    { key: 'speed_lab_level',         label: 'Speed Lab Level',      kind: 'enum', meta: 'speed_lab_level',  base: c.speedLabLevel },
+    { key: 'speed_lab_status',        label: 'Speed Lab Status',     kind: 'enum', meta: 'speed_lab_status', base: c.speedLabStatus },
+    { key: 'speed_lab_director',      label: 'Speed Lab Director',   kind: 'text', base: c.director },
+    { key: 'hardware',                label: 'Hardware',             kind: 'enum', meta: 'hardware',         base: c.hardware },
+    { key: 'years_as_a_speed_lab',    label: 'Years as a Speed Lab', kind: 'enum', meta: 'years_as_a_speed_lab', base: c.yearsAsSpeedLab },
+    { key: 'onboarding_cohort',       label: 'Onboarding Cohort',    kind: 'text', base: c.onboardingCohort },
+    { key: 'renewal_status',          label: 'Renewal Status',       kind: 'enum', meta: 'renewal_status',   base: c.renewalStatus },
+    { key: 'churn_risk',              label: 'Churn Risk',           kind: 'enum', meta: 'churn_risk',       base: c.churnRisk },
+    { key: 'payment_update',          label: 'Payment Status',       kind: 'enum', meta: 'payment_update',   base: c.paymentStatus },
+    { key: 'payment_status',          label: 'Payment Date',         kind: 'enum', meta: 'payment_status',   base: c.paymentDate },
+    { key: 'payment_processor',       label: 'Payment Processor',    kind: 'enum', meta: 'payment_processor', base: c.paymentProcessor },
+    { key: 'removed_access_from_usr', label: 'Removed Access',       kind: 'enum', meta: 'removed_access_from_usr', base: c.removedAccess },
+  ]
+  const ownerBaseId = meta ? (meta.owners.find(o => (o.email || '').toLowerCase() === (c.ownerEmail || '').toLowerCase())?.id || '') : ''
+  const baseOf = (f) => f.key === 'hubspot_owner_id' ? ownerBaseId : (f.base ?? '')
+
+  const ensureMeta = async () => {
+    if (meta || metaState === 'loading') return
+    setMetaState('loading')
+    try { const m = await loadMeta(); setMeta(m); setMetaState('ready') }
+    catch (e) { setMetaErr(String(e.message || e)); setMetaState('error') }
+  }
+  const startEdit = () => { setVals({}); setEdit(true); ensureMeta() }
   const save = () => {
     const changes = {}
-    EDITABLE.forEach(f => {
-      const next = (vals[f.key] ?? '').toString().trim()
-      const cur = (f.val ?? '').toString()
-      if (next !== cur) changes[f.key] = f.type === 'number' ? (next === '' ? null : Number(next)) : (next || null)
+    FIELDS.forEach(f => {
+      if (vals[f.key] === undefined) return
+      const a = String(baseOf(f) ?? ''), b = String(vals[f.key] ?? '')
+      if (a !== b) changes[f.key] = f.kind === 'number' ? (b === '' ? null : Number(b)) : (b === '' ? null : b)
     })
     if (Object.keys(changes).length) onSaveDeal(changes)
     setEdit(false)
   }
-  const fmt = (key, v) => (v == null || v === '') ? '—' : (key === 'arr_amount' ? `$${Number(v).toLocaleString()}` : String(v))
+
+  const money = (v) => v == null || v === '' ? '—' : `$${Number(v).toLocaleString()}`
+  const displayVal = (f) => {
+    if (f.key === 'amount' || f.key === 'overdue_amount') return money(f.base)
+    if (f.display !== undefined) return f.display || '—'
+    return f.base == null || f.base === '' ? '—' : String(f.base)
+  }
+  const renderEdit = (f) => {
+    const v = vals[f.key] !== undefined ? vals[f.key] : baseOf(f)
+    const set = (val) => setVals(p => ({ ...p, [f.key]: val }))
+    if (f.kind === 'number') return <input className="ob-deal-input" type="number" value={v ?? ''} onChange={e => set(e.target.value)} />
+    if (f.kind === 'date')   return <input className="ob-deal-input" type="date" value={v || ''} onChange={e => set(e.target.value)} />
+    if (f.kind === 'text')   return <input className="ob-deal-input" type="text" value={v || ''} onChange={e => set(e.target.value)} />
+    if (f.kind === 'stage')  return <select className="ob-deal-input" value={v || ''} onChange={e => set(e.target.value)}><option value="">—</option>{(meta?.stages || []).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+    if (f.kind === 'owner')  return <select className="ob-deal-input" value={v || ''} onChange={e => set(e.target.value)}><option value="">—</option>{(meta?.owners || []).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
+    const opts = meta?.properties?.[f.meta]
+    if (opts) return <select className="ob-deal-input" value={v || ''} onChange={e => set(e.target.value)}><option value="">—</option>{opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+    return <input className="ob-deal-input" type="text" value={v || ''} onChange={e => set(e.target.value)} placeholder="options unavailable" />
+  }
 
   return (
     <div className="ob-deal">
       <div className="ob-deal-head">
-        <Briefcase size={14} />HubSpot Deal
+        <Briefcase size={14} />HubSpot Deal Properties
         <span style={{ flex: 1 }} />
         {edit ? (
           <>
@@ -313,32 +343,68 @@ export function DealDetails({ c, onSaveDeal, saving }) {
             <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}Save → HubSpot</button>
           </>
         ) : (
-          <button className="ob-icon-btn" onClick={open}><Pencil size={13} />Edit</button>
+          <button className="ob-icon-btn" onClick={startEdit}><Pencil size={13} />Edit</button>
         )}
       </div>
+      {edit && metaState === 'loading' && <div className="ob-deal-note"><Loader2 size={12} className="animate-spin" /> Loading HubSpot options…</div>}
+      {edit && metaState === 'error' && <div className="ob-deal-note err">Couldn’t load live HubSpot options ({metaErr}). You can still type values; dropdowns return once the connector scopes are enabled.</div>}
       <div className="ob-deal-grid">
-        {EDITABLE.map(f => (
+        {FIELDS.map(f => (
           <div className="ob-deal-field" key={f.key}>
-            <span className="ob-deal-lab">{f.label}<i className="ob-deal-sync">syncs to HubSpot</i></span>
-            {edit
-              ? <input className="ob-deal-input" type={f.type || 'text'} value={vals[f.key]} onChange={e => setVals(p => ({ ...p, [f.key]: e.target.value }))} />
-              : <span className="ob-deal-val">{fmt(f.key, f.val)}</span>}
-          </div>
-        ))}
-        {READONLY.map(([label, val]) => (
-          <div className="ob-deal-field ro" key={label}>
-            <span className="ob-deal-lab">{label}</span>
-            <span className="ob-deal-val">{val == null || val === '' ? '—' : String(val)}</span>
-          </div>
-        ))}
-        {NOT_SYNCED.map(label => (
-          <div className="ob-deal-field ro" key={label}>
-            <span className="ob-deal-lab">{label}</span>
-            <span className="ob-deal-val muted">— not synced yet</span>
+            <span className="ob-deal-lab">{f.label}</span>
+            {edit ? renderEdit(f) : <span className="ob-deal-val">{displayVal(f)}</span>}
           </div>
         ))}
       </div>
-      <div className="ob-deal-note">Top fields edit straight to the HubSpot deal. Greyed fields are pulled from HubSpot (display-only). “Not synced yet” fields need their HubSpot field added to the daily sync before they appear here.</div>
+      <div className="ob-deal-note">Every field edits straight to the HubSpot deal and syncs back. Dropdown options mirror HubSpot live.</div>
+    </div>
+  )
+}
+
+// ─── HubSpot timeline notes (read + post to the deal) ─────────────────────────
+export function NotesPanel({ dealId, loadNotes, addNote }) {
+  const [notes, setNotes] = useState([])
+  const [state, setState] = useState('loading') // loading|ready|error
+  const [err, setErr] = useState('')
+  const [draft, setDraft] = useState('')
+  const [posting, setPosting] = useState(false)
+
+  const refresh = async () => {
+    setState('loading')
+    try { const n = await loadNotes(dealId); setNotes(n); setState('ready') }
+    catch (e) { setErr(String(e.message || e)); setState('error') }
+  }
+  useEffect(() => { refresh() }, [dealId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const post = async () => {
+    if (!draft.trim()) return
+    setPosting(true)
+    try { await addNote(dealId, draft.trim()); setDraft(''); await refresh() }
+    catch (e) { alert(`Couldn't add note: ${String(e.message || e)}`) }
+    setPosting(false)
+  }
+  const strip = (html) => String(html || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+  const fmtT = (t) => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
+
+  return (
+    <div className="ob-notes">
+      <div className="ob-deal-head"><MessageSquare size={14} />HubSpot Notes</div>
+      <div className="ob-notes-add">
+        <textarea className="ob-notes-input" rows={2} value={draft} onChange={e => setDraft(e.target.value)} placeholder="Add a note — posts to the HubSpot deal timeline…" />
+        <button className="btn btn-primary" onClick={post} disabled={posting || !draft.trim()}>{posting ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}Add note</button>
+      </div>
+      {state === 'loading' && <div className="ob-notes-empty"><Loader2 size={12} className="animate-spin" /> Loading notes…</div>}
+      {state === 'error' && <div className="ob-notes-empty err">Couldn’t load HubSpot notes: {err}</div>}
+      {state === 'ready' && (notes.length === 0
+        ? <div className="ob-notes-empty">No notes on this deal yet.</div>
+        : <div className="ob-notes-list">
+            {notes.map(n => (
+              <div className="ob-note" key={n.id}>
+                <div className="ob-note-body">{strip(n.body)}</div>
+                <div className="ob-note-when">{fmtT(n.timestamp)}</div>
+              </div>
+            ))}
+          </div>)}
     </div>
   )
 }
