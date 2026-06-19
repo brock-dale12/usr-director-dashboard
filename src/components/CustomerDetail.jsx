@@ -265,8 +265,8 @@ function CustomerDetail({
 
   // header values
   const HC = c.healthColor || 'unknown'
-  const healthColor = { green: GREEN, yellow: '#B39600', orange: ORANGE, red: PINK, unknown: '#9a9a9a' }[HC]
-  const healthBg = { green: GREEN_BG, yellow: 'rgba(214,176,0,0.16)', orange: 'rgba(242,129,14,0.12)', red: PINK_BG, unknown: '#f0f0ef' }[HC]
+  const healthColor = { green: 'var(--st-green)', yellow: 'var(--st-yellow)', orange: 'var(--st-orange)', red: 'var(--st-red)', unknown: '#9a9a9a' }[HC]
+  const healthBg = { green: 'var(--st-green-bg)', yellow: 'var(--st-yellow-bg)', orange: 'var(--st-orange-bg)', red: 'var(--st-red-bg)', unknown: '#f0f0ef' }[HC]
   const locationLabel = [c.city, c.state].filter(Boolean).join(', ')
   const stageTasks = isOnboarding ? (catalog?.[c.stageKey] || []) : []
   const openTaskCount = stageTasks.filter(t => !doneSet?.has(t.key)).length
