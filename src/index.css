@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Lato:ital,wght@0,400;0,700;0,900;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&family=Lato:ital,wght@0,400;0,700;0,900;1,700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -1853,3 +1853,58 @@ body {
 .ob-note { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; }
 .ob-note-body { font-size: 13px; color: var(--usr-black); line-height: 1.45; white-space: pre-wrap; }
 .ob-note-when { font-size: 10.5px; color: var(--fg-subtle); margin-top: 6px; font-family: var(--font-display); font-weight: 700; letter-spacing: 0.04em; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   CUSTOMER VIEW — redesigned shared drawer (matches Customer View mockup)
+   Scoped under .cv-root so it never bleeds into the rest of the app.
+   Brand reds/greens map to the existing --usr-pink / --st-* tokens; the
+   neutral grays come straight from the mockup. Body type = Hanken Grotesk,
+   display type = Oswald (both already loaded above).
+   ════════════════════════════════════════════════════════════════════════ */
+.cv-root { font-family: 'Hanken Grotesk', system-ui, sans-serif; color: #1c1c1c; display: flex; flex-direction: column; gap: 12px; }
+.cv-root *, .cv-root *::before, .cv-root *::after { box-sizing: border-box; }
+
+/* sticky header card */
+.cv-head { position: relative; background: #fff; border: 1px solid #ededed; border-left: 5px solid var(--usr-pink); border-radius: 14px; padding: 20px 24px; }
+.cv-head-stat-v { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 18px; color: #1c1c1c; line-height: 1; }
+.cv-head-stat-l { font-family: 'Oswald', sans-serif; font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: #a8a8a8; margin-top: 3px; }
+
+/* toolbar */
+.cv-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 2px 6px; }
+.cv-toolbar-label { font-family: 'Oswald', sans-serif; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #b0b0b0; }
+.cv-tbtn { background: #fff; border: 1px solid #e6e6e6; border-radius: 8px; padding: 7px 13px; font-size: 12.5px; color: #555; cursor: pointer; font-family: inherit; }
+.cv-tbtn:hover { background: #f5f5f5; }
+
+/* section card */
+.cv-sec { background: #fff; border: 1px solid #ededed; border-radius: 14px; overflow: hidden; }
+.cv-sec-head { display: flex; align-items: center; gap: 13px; padding: 18px 22px; cursor: pointer; user-select: none; }
+.cv-sec-head:hover { background: #fafafa; }
+.cv-sec-title { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 16px; letter-spacing: .05em; text-transform: uppercase; color: #1c1c1c; }
+.cv-sec-sum { font-size: 12.5px; color: #9a9a9a; }
+.cv-sec-body { padding: 2px 22px 22px; }
+
+/* mockup-styled inner card */
+.cv-card { background: #f7f7f6; border: 1px solid #efefee; border-radius: 12px; padding: 18px; }
+.cv-card-title { font-family: 'Oswald', sans-serif; font-size: 11px; letter-spacing: .08em; color: #9a9a9a; text-transform: uppercase; font-weight: 500; }
+
+/* the activity & health 3-up grid */
+.cv-actband { display: grid; grid-template-columns: 1fr 1.45fr 1fr; gap: 14px; }
+@media (max-width: 900px) { .cv-actband { grid-template-columns: 1fr; } }
+
+/* contacts grid */
+.cv-contacts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 900px) { .cv-contacts { grid-template-columns: 1fr; } }
+.cv-contact { background: #f7f7f6; border: 1px solid #efefee; border-radius: 12px; padding: 16px; display: flex; gap: 13px; }
+.cv-avatar { width: 42px; height: 42px; border-radius: 50%; background: #1c1c1c; color: #fff; display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 15px; flex: none; }
+
+/* footer line (synced-from-hubspot etc.) */
+.cv-syncline { margin-top: 12px; font-size: 12px; color: #a0a0a0; display: flex; align-items: center; gap: 6px; }
+
+/* empty-state / coming-soon stub */
+.cv-stub { border: 1px dashed #dcdcdc; border-radius: 10px; padding: 22px; text-align: center; color: #9a9a9a; font-size: 13px; line-height: 1.6; }
+.cv-stub-pill { display: inline-block; margin-bottom: 8px; font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--usr-pink); background: rgba(236,54,66,0.08); border-radius: 5px; padding: 3px 9px; font-weight: 600; }
+
+/* start-tasks button */
+.cv-start { display: inline-flex; align-items: center; gap: 8px; background: #161616; color: #fff; border: none; border-radius: 11px; padding: 11px 16px; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 14px; letter-spacing: .03em; cursor: pointer; white-space: nowrap; }
+.cv-start:hover { background: #000; }
+.cv-start-badge { position: absolute; top: -8px; right: -8px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; background: var(--usr-pink); color: #fff; border: 2px solid #fff; font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 12.5px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
