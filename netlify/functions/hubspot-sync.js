@@ -165,10 +165,11 @@ export const handler = async (event) => {
       if (!lab) {
         // Auto-create a customer for an unmatched deal ONLY when it's in the
         // Onboarding pipeline (its stage id is in STAGE_LABELS) and is NOT
-        // Closed Lost (132311328). Use the deal name as the lab_name; the
-        // lab_accounts unique constraint on lab_name keeps this idempotent
-        // across re-runs. All other unmatched deals (Sales pipeline, Closed
-        // Lost, or nameless) are still skipped.
+        // Closed Lost (132311328). Use the deal name as the lab_name. The
+        // upsert merges on deal_id (the deal's stable identity), so this is
+        // idempotent across re-runs even if the deal name changes. All other
+        // unmatched deals (Sales pipeline, Closed Lost, or nameless) are
+        // still skipped.
         const isOnboarding = Object.prototype.hasOwnProperty.call(STAGE_LABELS, stage)
         if (isOnboarding && stage !== '132311328' && dealname) {
           lab = dealname
@@ -178,7 +179,7 @@ export const handler = async (event) => {
           continue
         }
       }
-      byLab[lab] = {
+      byLab[did] = {
         lab_name: lab,
         deal_id: did,
         renewal_date: dateOnly(p.contract_end_date),
@@ -208,7 +209,7 @@ export const handler = async (event) => {
     const rows = Object.values(byLab)
     for (let i = 0; i < rows.length; i += 100) {
       await supaService(
-        'lab_accounts?on_conflict=lab_name', 'POST', rows.slice(i, i + 100),
+        'lab_accounts?on_conflict=deal_id', 'POST', rows.slice(i, i + 100),
         { Prefer: 'resolution=merge-duplicates,return=minimal' },
       )
     }
