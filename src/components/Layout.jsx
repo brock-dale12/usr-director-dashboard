@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { MapPin, Mail, Trophy, Shield, LogOut, Users, Rocket, RefreshCw, CreditCard, Settings as SettingsIcon } from 'lucide-react'
+import { MapPin, Mail, Trophy, Shield, LogOut, Users, Rocket, RefreshCw, CreditCard, Link2, Settings as SettingsIcon } from 'lucide-react'
 import SpeedLabLogo from './SpeedLabLogo'
 import USRLogo from './USRLogo'
 
@@ -20,6 +20,7 @@ const ADMIN_NAV = [
   { to: '/renewals',    icon: RefreshCw,  label: 'Renewals',     exact: false },
   { to: '/payments',    icon: CreditCard, label: 'Payments',     exact: false },
   { to: '/admin',       icon: Shield,     label: 'Director View', exact: false },
+  { to: '/connections', icon: Link2,      label: 'Data Connections', exact: false },
   { to: '/leaderboard', icon: Trophy,     label: 'Leaderboard',  exact: false },
   { to: '/settings',    icon: SettingsIcon, label: 'Settings',    exact: false },
 ]

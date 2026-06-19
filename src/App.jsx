@@ -10,6 +10,7 @@ import AdminOverview from './pages/AdminOverview'
 import Onboarding from './pages/Onboarding'
 import Renewals from './pages/Renewals'
 import Payments from './pages/Payments'
+import DataConnections from './pages/DataConnections'
 import Settings from './pages/Settings'
 
 function Spinner() {
@@ -100,6 +101,16 @@ export default function App() {
           element={
             <ProtectedRoute adminOnly>
               <Layout><Payments /></Layout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Admin: Data Connections (HubSpot ↔ USR DB ↔ assignment linkage audit) */}
+        <Route
+          path="/connections"
+          element={
+            <ProtectedRoute adminOnly>
+              <Layout><DataConnections /></Layout>
             </ProtectedRoute>
           }
         />

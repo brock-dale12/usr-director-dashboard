@@ -7,7 +7,7 @@ import { TTVPanel, StageControl, DetailsEditor, DealProperties, NotesPanel } fro
 import WeeklyMatrix from '../components/WeeklyMatrix'
 import {
   Activity, Mail, Phone, Zap, Check, CheckCircle, Send, User, Loader2,
-  CheckSquare, Square, Pencil, StickyNote, Trophy, Briefcase, MessageSquare,
+  CheckSquare, Square, Pencil, StickyNote, Trophy, Briefcase, MessageSquare, Link2,
 } from 'lucide-react'
 
 /**
@@ -178,6 +178,42 @@ function TaskRow({ task, c, isDone, meta, onOpen, onToggle }) {
   )
 }
 
+// ─── Data Connections strip — how THIS customer is wired across systems ───────
+// Shows the HubSpot keys (deal_id + company_id) and the USR-DB org link + match
+// quality, so the linkage is visible/trustable right in the drawer. The full
+// cross-customer audit (incl. region-assignment join) lives on /connections.
+function ConnectionsStrip({ c }) {
+  const org = c.orgMatchKind || (c.orgId ? 'linked' : 'none')
+  const orgMeta = {
+    exact:  { label: 'Verified',       tone: '#1DB271' },
+    linked: { label: 'Linked',         tone: '#1DB271' },
+    fuzzy:  { label: 'Fuzzy — verify', tone: '#F2810E' },
+    none:   { label: 'Not linked',     tone: '#EC3642' },
+  }[org]
+  const Pill = ({ tone, children, title }) => (
+    <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 700, background: 'var(--bg-alt, #f1f1f1)', color: tone || 'var(--fg-muted)' }}>{children}</span>
+  )
+  return (
+    <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
+      <h4><Link2 size={14} />Data Connections</h4>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, fontSize: 12.5, color: 'var(--fg-muted)' }}>
+        <span>HubSpot deal: <code>{c.dealId || '—'}</code></span>
+        <span>HubSpot company:{' '}
+          {c.companyId
+            ? <Pill tone="#1DB271" title={`HubSpot company ${c.companyId}`}>#{c.companyId}</Pill>
+            : <Pill tone="#EC3642" title="No HubSpot company linked — keyed by deal only">not linked</Pill>}
+        </span>
+        <span>USR DB org:{' '}
+          <Pill tone={orgMeta.tone} title={c.orgName ? `USR org: ${c.orgName}${c.orgId ? ` (#${c.orgId})` : ''}` : 'No USR organization linked'}>
+            {orgMeta.label}
+          </Pill>
+          {c.orgName && <span style={{ marginLeft: 6, color: 'var(--fg-subtle)' }}>{c.orgName}</span>}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // ─── The expandable drawer (contact, activity/health, journey + task checklist) ─
 // The SAME rich detail every pipeline view opens — the place the actual CS work
 // happens. `isOnboarding` gates the journey + TTV sections.
@@ -232,6 +268,9 @@ function CustomerDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDo
               <NotesPanel dealId={c.dealId} loadNotes={loadNotes} addNote={addNote} />
             </div>
           )}
+
+          {/* 1b. Data connections — how this customer is wired across systems */}
+          <ConnectionsStrip c={c} />
 
           {/* 2. Activity band — TTV / weekly activity / health, one compact row */}
           <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
