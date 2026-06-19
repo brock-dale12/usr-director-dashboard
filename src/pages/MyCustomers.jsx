@@ -6,6 +6,8 @@ import { openGmailDraft, logComm } from '../lib/gmailDraft'
 import { Users, Loader2, Search, Check, X, Star } from 'lucide-react'
 import { LabCard, HeroScore, HeroGreenRate } from './MyRegion'
 import FilterDropdown, { splitHw } from '../components/FilterDropdown'
+import ChurnReview from '../components/ChurnReview'
+import { isActiveAccount } from '../lib/customerActions'
 
 /**
  * My Customers — Admin (Customer Success Hub) landing.
@@ -89,7 +91,10 @@ export default function MyCustomers() {
       // HubSpot-synced values so lists, filters, and cards all agree.
       const csMap = {}
       ;((csRes && csRes.data) || []).forEach(r => { csMap[r.deal_id] = r })
-      const merged = (acctRes.data || []).map(a => {
+      // Roster filter: hide soft-deleted (is_active=false) customers everywhere.
+      // churn_flagged rows stay (still is_active=true) so they surface in the
+      // churn-review banner; the main list filters them out (see `passes`).
+      const merged = (acctRes.data || []).filter(isActiveAccount).map(a => {
         const cs = csMap[a.deal_id]
         return cs ? {
           ...a,
@@ -213,6 +218,7 @@ export default function MyCustomers() {
     const f = filters
     const passes = (r) => {
       const a = r.account
+      if (a.churn_flagged) return false   // pending churn review — shown in the banner, not the list
       if (q) {
         const name = `${a.company_name || ''} ${a.lab_name || ''}`.toLowerCase()
         if (!name.includes(q)) return false
@@ -269,6 +275,14 @@ export default function MyCustomers() {
   const avgScore = scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null
   const noActivity = customers.length - totalWithHealth
 
+  // Churn review resolved: 'confirm_churn' soft-deletes (drop the row);
+  // 'keep_active' clears the flag (row moves into the main list).
+  const onChurnResolved = (dealId, action) => {
+    setAccounts(prev => action === 'confirm_churn'
+      ? prev.filter(a => a.deal_id !== dealId)
+      : prev.map(a => a.deal_id === dealId ? { ...a, churn_flagged: false } : a))
+  }
+
   const setFilter = (key, vals) => setFilters(prev => ({ ...prev, [key]: vals }))
   const clearAll = () => { setSearch(''); setFilters(director?.email ? { ...EMPTY_FILTERS, dealOwner: [director.email.toLowerCase()] } : EMPTY_FILTERS) }
 
@@ -307,6 +321,9 @@ export default function MyCustomers() {
           <h1 className="topbar-title">My Customers</h1>
         </div>
       </div>
+
+      {/* ── Churn review (sync-flagged customers awaiting confirm/remove) ─── */}
+      <ChurnReview accounts={accounts} onResolved={onChurnResolved} />
 
       {/* ── Hero metrics ────────────────────────────────────────────────── */}
       {totalWithHealth > 0 && (
