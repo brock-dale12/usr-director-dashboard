@@ -515,6 +515,11 @@ export function LabCard({ snap, allHistory, viewingId, stage, score = null, acco
     name: heroName,
     city: account.company_city, state: account.company_state,
     dealId: account.deal_id,
+    // Data-connection fields (for the drawer's Connections strip)
+    companyId: account.hubspot_company_id || null,
+    orgId: account.org_id ?? snap.org_id ?? null,
+    orgName: account.org_name || null,
+    orgMatchKind: account.org_match_kind || null,
     contactName: account.contact_name,
     email: account.contact_email,
     phone: account.contact_phone,

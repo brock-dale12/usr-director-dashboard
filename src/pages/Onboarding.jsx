@@ -786,6 +786,11 @@ export default function Onboarding() {
           name: a.company_name || lab || '(unnamed customer)',
           city: a.company_city, state: a.company_state,
           hubspotStage: a.deal_stage_label,
+          // Data-connection fields (for the drawer's Connections strip)
+          companyId: a.hubspot_company_id || null,
+          orgId: a.org_id ?? latest?.org_id ?? null,
+          orgName: a.org_name || null,
+          orgMatchKind: a.org_match_kind || null,
           stageKey, graduated,
           effDay: realDay != null ? realDay : (HUBSPOT_FALLBACK_DAY[a.deal_stage_label] ?? 1),
           day: realDay,
