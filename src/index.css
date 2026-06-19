@@ -1864,10 +1864,9 @@ body {
 .cv-root { font-family: 'Hanken Grotesk', system-ui, sans-serif; color: #1c1c1c; display: flex; flex-direction: column; gap: 12px; }
 .cv-root *, .cv-root *::before, .cv-root *::after { box-sizing: border-box; }
 
-/* sticky header card */
-.cv-head { position: relative; background: #fff; border: 1px solid #ededed; border-left: 5px solid var(--usr-pink); border-radius: 14px; padding: 20px 24px; }
-.cv-head-stat-v { font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 18px; color: #1c1c1c; line-height: 1; }
-.cv-head-stat-l { font-family: 'Oswald', sans-serif; font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: #a8a8a8; margin-top: 3px; }
+/* header card (this row IS the customer card; click toggles detail) */
+.cv-head:hover { background: #fcfcfc; }
+.cv-stat-l { font-family: 'Oswald', sans-serif; font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: #a8a8a8; margin-top: 3px; }
 
 /* toolbar */
 .cv-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 2px 6px; }
