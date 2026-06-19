@@ -6,23 +6,36 @@ import {
 import { TTVPanel, StageControl, DetailsEditor, DealProperties, NotesPanel } from '../components/OnboardingControls'
 import WeeklyMatrix from '../components/WeeklyMatrix'
 import {
-  Activity, Mail, Phone, Zap, Check, CheckCircle, Send, User, Loader2,
+  Activity, Mail, Phone, Zap, Check, CheckCircle, Send, User, Users, Loader2,
   CheckSquare, Square, Pencil, StickyNote, Trophy, Briefcase, MessageSquare, Link2,
+  ChevronDown, Calendar, RefreshCw, ListChecks, Plus,
 } from 'lucide-react'
 
 /**
  * CustomerDetail — the ONE shared "individual customer view" (expanded detail
- * drawer) used by every page (Onboarding, My Customers, My Region). Edits here
- * surface on all pages automatically.
+ * drawer) used by every page (Onboarding, My Customers, My Region, and the
+ * forthcoming Renewals / Payments pages). Edit here once → every page that
+ * expands a customer card gets the same view automatically.
  *
- * `isOnboarding` (default true) gates the onboarding-only sections:
- *   - the Time-to-Value card inside the Activity & Health band
- *   - the entire 90-Day Journey + task checklist block
- * Everything else (contact strip, details editor, Deal Properties + Notes,
- * Weekly Activity, Monthly Health Trend) always renders.
+ * REDESIGN (Customer View mockup):
+ *   Sticky header (name · location · last touch · last meeting · onboarding day ·
+ *   health /9 · Start tasks) over collapsible sections — Deal Information,
+ *   Contacts, Activity & Health, Onboarding, Renewal, Tasks, Notes, Meetings,
+ *   Communications, Data Connections. Oswald display + Hanken Grotesk body;
+ *   mockup reds/greens mapped to the app's --usr-pink / --st-* tokens.
  *
- * Extracted verbatim from Onboarding.jsx's ObCardDetail so the canonical drawer
- * lives in one place.
+ * Data wiring — "wire what exists, stub the rest":
+ *   WIRED  → header, Deal Information (DealProperties), Activity & Health
+ *            (TTVPanel + WeeklyMatrix + HealthArea), Onboarding (journey +
+ *            tasks), Notes (NotesPanel), Contacts (primary contact + editor),
+ *            Data Connections (ConnectionsStrip).
+ *   STUB   → Renewal pipeline, master cross-pipeline Tasks list, Meetings
+ *            (prep + Fireflies), Communications log. These render in the new
+ *            design with empty states + // TODO(data) markers; they light up
+ *            once the parent pages pass the backing data.
+ *
+ * `isOnboarding` (default true) gates the onboarding-only pieces (TTV card,
+ * 90-Day Journey + task checklist, Start-tasks button, Onboarding section).
  */
 
 // ─── Date formatting for completion stamps ────────────────────────────────────
@@ -178,10 +191,7 @@ function TaskRow({ task, c, isDone, meta, onOpen, onToggle }) {
   )
 }
 
-// ─── Data Connections strip — how THIS customer is wired across systems ───────
-// Shows the HubSpot keys (deal_id + company_id) and the USR-DB org link + match
-// quality, so the linkage is visible/trustable right in the drawer. The full
-// cross-customer audit (incl. region-assignment join) lives on /connections.
+// ─── Data Connections — how THIS customer is wired across systems ─────────────
 function ConnectionsStrip({ c }) {
   const org = c.orgMatchKind || (c.orgId ? 'linked' : 'none')
   const orgMeta = {
@@ -191,124 +201,249 @@ function ConnectionsStrip({ c }) {
     none:   { label: 'Not linked',     tone: '#EC3642' },
   }[org]
   const Pill = ({ tone, children, title }) => (
-    <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 700, background: 'var(--bg-alt, #f1f1f1)', color: tone || 'var(--fg-muted)' }}>{children}</span>
+    <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 700, background: '#f1f1f1', color: tone || 'var(--fg-muted)' }}>{children}</span>
   )
   return (
-    <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-      <h4><Link2 size={14} />Data Connections</h4>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, fontSize: 12.5, color: 'var(--fg-muted)' }}>
-        <span>HubSpot deal: <code>{c.dealId || '—'}</code></span>
-        <span>HubSpot company:{' '}
-          {c.companyId
-            ? <Pill tone="#1DB271" title={`HubSpot company ${c.companyId}`}>#{c.companyId}</Pill>
-            : <Pill tone="#EC3642" title="No HubSpot company linked — keyed by deal only">not linked</Pill>}
-        </span>
-        <span>USR DB org:{' '}
-          <Pill tone={orgMeta.tone} title={c.orgName ? `USR org: ${c.orgName}${c.orgId ? ` (#${c.orgId})` : ''}` : 'No USR organization linked'}>
-            {orgMeta.label}
-          </Pill>
-          {c.orgName && <span style={{ marginLeft: 6, color: 'var(--fg-subtle)' }}>{c.orgName}</span>}
-        </span>
-      </div>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, fontSize: 12.5, color: 'var(--fg-muted)' }}>
+      <span>HubSpot deal: <code>{c.dealId || '—'}</code></span>
+      <span>HubSpot company:{' '}
+        {c.companyId
+          ? <Pill tone="#1DB271" title={`HubSpot company ${c.companyId}`}>#{c.companyId}</Pill>
+          : <Pill tone="#EC3642" title="No HubSpot company linked — keyed by deal only">not linked</Pill>}
+      </span>
+      <span>USR DB org:{' '}
+        <Pill tone={orgMeta.tone} title={c.orgName ? `USR org: ${c.orgName}${c.orgId ? ` (#${c.orgId})` : ''}` : 'No USR organization linked'}>
+          {orgMeta.label}
+        </Pill>
+        {c.orgName && <span style={{ marginLeft: 6, color: 'var(--fg-subtle)' }}>{c.orgName}</span>}
+      </span>
     </div>
   )
 }
 
-// ─── The expandable drawer (contact, activity/health, journey + task checklist) ─
-// The SAME rich detail every pipeline view opens — the place the actual CS work
-// happens. `isOnboarding` gates the journey + TTV sections.
+// ─── Collapsible section card (the mockup's repeating shell) ──────────────────
+function Section({ icon: Icon, title, summary, open, onToggle, children }) {
+  return (
+    <div className="cv-sec">
+      <div className="cv-sec-head" onClick={onToggle}>
+        <span style={{ display: 'inline-flex', color: '#1c1c1c' }}><Icon size={19} strokeWidth={1.8} /></span>
+        <div className="cv-sec-title">{title}</div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
+          {summary != null && summary !== '' && <span className="cv-sec-sum">{summary}</span>}
+          <ChevronDown size={16} style={{ color: '#a0a0a0', transition: 'transform .2s ease', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+        </div>
+      </div>
+      {open && <div className="cv-sec-body">{children}</div>}
+    </div>
+  )
+}
+
+// ─── A "coming soon / wiring in progress" empty state for stub sections ───────
+function Stub({ children }) {
+  return (
+    <div className="cv-stub">
+      <span className="cv-stub-pill">Wiring in progress</span>
+      <div>{children}</div>
+    </div>
+  )
+}
+
+// initials from a name ("Landon Jones" -> "LJ")
+function initialsOf(name) {
+  if (!name) return '—'
+  const parts = String(name).trim().split(/\s+/)
+  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '—'
+}
+
+// ─── The expandable drawer ────────────────────────────────────────────────────
 function CustomerDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDone, onSaveCs, savingCs, hsPushState, scrollToTasks, onComplete, onSaveDeal, savingDeal, loadMeta, loadNotes, addNote, isOnboarding = true }) {
   const nextLabel = c.graduated ? null : (OB_STAGES[OB_INDEX[c.stageKey] + 1]?.label || null)
+
+  // Section open/closed state. Activity & Health (and Onboarding when relevant)
+  // start open; everything else collapsed — mirrors the mockup default.
+  const [open, setOpen] = useState({
+    dealInfo: false, contacts: false, activityHealth: true,
+    onboarding: isOnboarding, renewal: false, tasks: false,
+    notes: false, meetings: false, comms: false, connections: false,
+  })
+  const toggle = (k) => setOpen(o => ({ ...o, [k]: !o[k] }))
+  const setAll = (v) => setOpen(o => Object.fromEntries(Object.keys(o).map(k => [k, v])))
+
   const [editOpen, setEditOpen] = useState(false)
-  const [dealOpen, setDealOpen] = useState(false)
-  const [notesOpen, setNotesOpen] = useState(false)
   const [viewStage, setViewStage] = useState(null) // null = follow the customer's current stage
   const viewKey = viewStage || (c.graduated ? 'qbr' : c.stageKey)
   const tasksRef = useRef(null)
-  // "Start tasks" (Focus Queue) opens the card scrolled to the task checklist.
+
+  // "Start tasks" (Focus Queue) opens the Onboarding section scrolled to the list.
   useEffect(() => {
-    if (scrollToTasks && tasksRef.current) tasksRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (scrollToTasks) {
+      setOpen(o => ({ ...o, onboarding: true }))
+      const t = setTimeout(() => tasksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
+      return () => clearTimeout(t)
+    }
   }, [scrollToTasks])
 
+  // ── header-derived values ──
+  const HC = c.healthColor || 'unknown'
+  const healthColor = { green: '#1DB271', yellow: '#B39600', orange: '#F2810E', red: '#EC3642', unknown: '#9a9a9a' }[HC]
+  const healthBg = { green: 'rgba(29,178,113,0.10)', yellow: 'rgba(214,176,0,0.16)', orange: 'rgba(242,129,14,0.12)', red: 'rgba(236,54,66,0.10)', unknown: '#f0f0ef' }[HC]
+  const locationLabel = [c.city, c.state].filter(Boolean).join(', ')
+
+  const stageTasks = isOnboarding ? (catalog?.[c.stageKey] || []) : []
+  const openTaskCount = stageTasks.filter(t => !doneSet?.has(t.key)).length
+
+  const contactCount = c.contactName ? 1 : 0
+  const healthSummary = `${c.healthScore != null ? c.healthScore : '—'}/9 health`
+
   return (
-        <div className="ob-detail">
-          {/* 1. Contact strip — who to reach, one line, at the top */}
-          <div className="detail-block ob-contact-strip" style={{ gridColumn: '1 / -1' }}>
-            <span className="ob-cs-name"><User size={14} />{c.contactName || 'No contact on file'}</span>
-            {c.email && <a className="ob-cs-item link" href={`mailto:${c.email}`} onClick={e => e.stopPropagation()}><Mail size={13} />{c.email}</a>}
-            {c.phone && <span className="ob-cs-item"><Phone size={13} />{c.phone}</span>}
-            <span className="ob-cs-item">Director: <b>{c.director || '—'}</b></span>
-            <span className="ob-cs-item">Owner: <b>{c.owner || '—'}</b></span>
-            <span style={{ flex: 1 }} />
-            <button className={`ob-icon-btn ob-notes-btn ${c.cs?.notes ? 'has-notes' : ''}`} onClick={() => setEditOpen(o => !o)} title={c.cs?.notes ? `Team notes: ${c.cs.notes.slice(0, 120)}` : 'No team notes yet — click to add'}>
-              <StickyNote size={14} />{c.cs?.notes && <i className="ob-notes-dot" />}
-            </button>
-            <button className="ob-icon-btn" onClick={() => setEditOpen(o => !o)} title="Edit contact, director, notes"><Pencil size={13} /></button>
-            {hsPushState === 'pushing' && <span className="ob-hs-status"><Loader2 size={12} className="animate-spin" />Pushing to HubSpot…</span>}
-            {hsPushState === 'ok' && <span className="ob-hs-status ok"><CheckCircle size={12} />Pushed to HubSpot</span>}
-            {hsPushState && hsPushState !== 'pushing' && hsPushState !== 'ok' && <span className="ob-hs-status err" title={hsPushState}>HubSpot push failed — saved internally</span>}
-          </div>
-          {editOpen && (
-            <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-              <DetailsEditor c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} onClose={() => setEditOpen(false)} />
-            </div>
-          )}
-          {/* Prominent HubSpot actions */}
-          <div className="detail-block ob-hs-actions" style={{ gridColumn: '1 / -1' }}>
-            <button className={`ob-bigbtn ${dealOpen ? 'on' : ''}`} onClick={() => { setDealOpen(o => !o); setNotesOpen(false) }}><Briefcase size={16} />Deal Properties</button>
-            <button className={`ob-bigbtn ${notesOpen ? 'on' : ''}`} onClick={() => { setNotesOpen(o => !o); setDealOpen(false) }}><MessageSquare size={16} />Notes</button>
-          </div>
-          {dealOpen && (
-            <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-              <DealProperties c={c} onSaveDeal={onSaveDeal} saving={savingDeal} loadMeta={loadMeta} />
-            </div>
-          )}
-          {notesOpen && (
-            <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-              <NotesPanel dealId={c.dealId} loadNotes={loadNotes} addNote={addNote} />
-            </div>
-          )}
+    <div className="cv-root">
 
-          {/* 1b. Data connections — how this customer is wired across systems */}
-          <ConnectionsStrip c={c} />
-
-          {/* 2. Activity band — TTV / weekly activity / health, one compact row */}
-          <div className="detail-block" style={{ gridColumn: '1 / -1' }}>
-            <h4><Zap size={14} />Activity &amp; Health</h4>
-            <div className="ob-actband">
-              {isOnboarding && (
-                <div className="ob-actcard">
-                  <div className="ob-actcard-title">Time-to-Value</div>
-                  <TTVPanel c={c} cs={c.cs} synced={c.ttvSynced} onSave={onSaveCs} saving={savingCs} />
-                </div>
-              )}
-              <div className="ob-actcard">
-                <div className="ob-actcard-title">Weekly Activity · 8w</div>
-                {c.weeks.length > 0
-                  ? <WeeklyMatrix weeks={c.weeks} />
-                  : <p style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>No weekly activity yet — appears once platform usage flows.</p>}
+      {/* ════ STICKY HEADER ════ */}
+      <div className="cv-head" style={{ borderLeftColor: healthColor }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          <div style={{ width: 23, height: 23, borderRadius: '50%', background: healthColor, flex: 'none', boxShadow: `0 0 0 4px ${healthBg}`, alignSelf: 'center' }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 26, color: '#1c1c1c', lineHeight: 1.1 }}>
+              {c.name || c.contactName || 'Customer'}
+              <div style={{ marginTop: 5, fontSize: 14, color: '#8a8a8a' }}>{locationLabel || '—'}</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, flex: 'none', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {/* Last touch / Last meeting — TODO(data): not yet on `c`; stubbed */}
+            <div style={{ textAlign: 'center' }}>
+              <div className="cv-head-stat-v">—</div>
+              <div className="cv-head-stat-l">Last touch</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div className="cv-head-stat-v">—</div>
+              <div className="cv-head-stat-l">Last meeting</div>
+            </div>
+            {isOnboarding && c.day != null && (
+              <div style={{ textAlign: 'center' }}>
+                <div className="cv-head-stat-v">{c.day}<span style={{ fontSize: 13, color: '#b5b5b5' }}>/90</span></div>
+                <div className="cv-head-stat-l">Onboarding day</div>
               </div>
-              <div className="ob-actcard">
-                <div className="ob-actcard-title">Monthly Health Trend</div>
-                <div className="trend-now">
-                  <span className="v" style={{ color: 'var(--usr-pink)' }}>{c.healthScore != null ? c.healthScore : '—'}<span style={{ fontSize: 16, color: 'var(--fg-subtle)' }}>/9</span></span>
+            )}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 3, padding: '3px 11px', borderRadius: 8, background: healthBg }}>
+                <span style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 18, color: healthColor }}>{c.healthScore != null ? c.healthScore : '—'}</span>
+                <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, fontWeight: 500, color: healthColor, opacity: 0.65 }}>/9</span>
+              </div>
+              <div className="cv-head-stat-l">Health score</div>
+            </div>
+            {isOnboarding && (
+              <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <button className="cv-start" onClick={() => { setOpen(o => ({ ...o, onboarding: true })); setTimeout(() => tasksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80) }}>
+                  <Send size={15} />Start tasks
+                </button>
+                {openTaskCount > 0 && <span className="cv-start-badge">{openTaskCount}</span>}
+              </div>
+            )}
+          </div>
+        </div>
+        {/* HubSpot push status — surfaced from the contact/details save flow */}
+        {hsPushState === 'pushing' && <div className="ob-hs-status" style={{ marginTop: 10 }}><Loader2 size={12} className="animate-spin" />Pushing to HubSpot…</div>}
+        {hsPushState === 'ok' && <div className="ob-hs-status ok" style={{ marginTop: 10 }}><CheckCircle size={12} />Pushed to HubSpot</div>}
+        {hsPushState && hsPushState !== 'pushing' && hsPushState !== 'ok' && <div className="ob-hs-status err" style={{ marginTop: 10 }} title={hsPushState}>HubSpot push failed — saved internally</div>}
+      </div>
+
+      {/* ════ TOOLBAR ════ */}
+      <div className="cv-toolbar">
+        <div className="cv-toolbar-label">Customer Detail</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="cv-tbtn" onClick={() => setAll(true)}>Expand all</button>
+          <button className="cv-tbtn" onClick={() => setAll(false)}>Collapse all</button>
+        </div>
+      </div>
+
+      {/* ════ 1. DEAL INFORMATION (wired → DealProperties) ════ */}
+      <Section icon={Briefcase} title="Deal Information"
+        summary={[c.product, c.segment].filter(Boolean).join(' · ') || 'HubSpot deal'}
+        open={open.dealInfo} onToggle={() => toggle('dealInfo')}>
+        <DealProperties c={c} onSaveDeal={onSaveDeal} saving={savingDeal} loadMeta={loadMeta} />
+        <div className="cv-syncline"><Link2 size={13} />Synced from HubSpot — deal is the source of truth for stage, ARR, and renewal date.</div>
+      </Section>
+
+      {/* ════ 2. CONTACTS (wired → primary contact + editor; multi-contact TODO) ════ */}
+      <Section icon={Users} title="Contacts"
+        summary={contactCount ? `${contactCount} contact` : 'No contact on file'}
+        open={open.contacts} onToggle={() => toggle('contacts')}>
+        {c.contactName ? (
+          <div className="cv-contacts">
+            <div className="cv-contact">
+              <div className="cv-avatar">{initialsOf(c.contactName)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 600, fontSize: 15 }}>{c.contactName}</span>
+                  <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 9.5, letterSpacing: '.05em', textTransform: 'uppercase', color: '#15924a', background: '#e6f6ec', borderRadius: 5, padding: '2px 6px', fontWeight: 500 }}>Primary</span>
                 </div>
-                <HealthArea history={c.healthHistory} />
-                <div className="ob-actcard-foot">{c.athletes ?? '—'} athletes (30d) · {c.prs ?? '—'} PRs (8w)</div>
+                <div style={{ fontSize: 12.5, color: '#8a8a8a', marginTop: 2 }}>Primary Contact</div>
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5, fontSize: 13 }}>
+                  {c.email && <a href={`mailto:${c.email}`} onClick={e => e.stopPropagation()} style={{ color: 'var(--usr-pink)', textDecoration: 'none', wordBreak: 'break-all', display: 'flex', alignItems: 'center', gap: 7 }}><Mail size={14} />{c.email}</a>}
+                  {c.phone && <span style={{ color: '#444', display: 'flex', alignItems: 'center', gap: 7 }}><Phone size={14} />{c.phone}</span>}
+                </div>
               </div>
             </div>
           </div>
+        ) : (
+          <Stub>No contact on file yet. Add one via Edit details, or it appears once HubSpot contacts sync.</Stub>
+        )}
+        <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="cv-tbtn" onClick={() => setEditOpen(v => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><Pencil size={13} />{editOpen ? 'Close editor' : 'Edit details'}</button>
+          <span style={{ fontSize: 12, color: '#a0a0a0' }}>{/* TODO(data): full multi-contact roster from HubSpot company */}Multi-contact roster syncs from HubSpot — coming soon.</span>
+        </div>
+        {editOpen && (
+          <div style={{ marginTop: 12 }}>
+            <DetailsEditor c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} onClose={() => setEditOpen(false)} />
+          </div>
+        )}
+      </Section>
 
-          {/* 3. Journey + tasks — red-dot timeline drives the task list below */}
+      {/* ════ 3. ACTIVITY & HEALTH (wired) ════ */}
+      <Section icon={Activity} title="Activity & Health"
+        summary={healthSummary} open={open.activityHealth} onToggle={() => toggle('activityHealth')}>
+        <div className="cv-actband">
           {isOnboarding && (
-          <div className="detail-block" ref={tasksRef} style={{ gridColumn: '1 / -1' }}>
-            <h4>
-              <Activity size={14} />90-Day Journey · {c.graduated ? 'Graduated' : OB_LABEL[c.stageKey]}
-              {!c.graduated && nextLabel && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'none', letterSpacing: 0 }}>complete required steps → {nextLabel}</span>}
+            <div className="cv-card">
+              <div className="cv-card-title">Time-to-Value</div>
+              <div style={{ marginTop: 10 }}>
+                <TTVPanel c={c} cs={c.cs} synced={c.ttvSynced} onSave={onSaveCs} saving={savingCs} />
+              </div>
+            </div>
+          )}
+          <div className="cv-card">
+            <div className="cv-card-title">Weekly Activity · 8w</div>
+            <div style={{ marginTop: 12 }}>
+              {c.weeks && c.weeks.length > 0
+                ? <WeeklyMatrix weeks={c.weeks} />
+                : <p style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>No weekly activity yet — appears once platform usage flows.</p>}
+            </div>
+          </div>
+          <div className="cv-card">
+            <div className="cv-card-title">Monthly Health Trend</div>
+            <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 34, lineHeight: 1, color: 'var(--usr-pink)', marginTop: 8 }}>
+              {c.healthScore != null ? c.healthScore : '—'}<span style={{ fontSize: 20, color: '#e8a39d' }}>/9</span>
+            </div>
+            <HealthArea history={c.healthHistory} />
+            <div className="ob-actcard-foot" style={{ marginTop: 8 }}>{c.athletes ?? '—'} athletes (30d) · {c.prs ?? '—'} PRs (8w)</div>
+          </div>
+        </div>
+      </Section>
+
+      {/* ════ 4. ONBOARDING (wired → journey + tasks) ════ */}
+      {isOnboarding && (
+        <Section icon={Trophy} title="Onboarding"
+          summary={c.graduated ? 'Graduated' : (c.day != null ? `${OB_LABEL[c.stageKey]} · Day ${c.day} of 90` : OB_LABEL[c.stageKey])}
+          open={open.onboarding} onToggle={() => toggle('onboarding')}>
+          <div ref={tasksRef}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div style={{ fontSize: 13, color: '#888' }}>
+                90-Day Journey{!c.graduated && nextLabel ? ` · complete required steps → ${nextLabel}` : ''}
+              </div>
               <span style={{ flex: 1 }} />
               <StageControl c={c} cs={c.cs} onSave={onSaveCs} saving={savingCs} />
               {onComplete && <button className="ob-complete-btn" onClick={onComplete} title="Finish onboarding — moves to My Customers"><Trophy size={13} />Complete</button>}
-            </h4>
+            </div>
             <JourneyTimeline
               stageKey={c.stageKey} graduated={c.graduated} day={c.day}
               catalog={catalog} doneSet={doneSet}
@@ -336,8 +471,60 @@ function CustomerDetail({ c, catalog, doneSet, doneMeta, onOpenTemplate, onSetDo
               <div className="ob-gate-note">{gatingKeys(viewKey).filter(k => doneSet.has(k)).length}/{gatingKeys(viewKey).length} required steps done to advance</div>
             )}
           </div>
-          )}
-        </div>
+        </Section>
+      )}
+
+      {/* ════ 5. RENEWAL (stub — TODO(data): renewal pipeline) ════ */}
+      <Section icon={RefreshCw} title="Renewal"
+        summary="Not yet in window" open={open.renewal} onToggle={() => toggle('renewal')}>
+        <Stub>
+          The renewal pipeline (6-month → 90 / 60 / 30-day → close) lights up as the account approaches its renewal window.
+          {/* TODO(data): mirror the onboarding journey using renewal stage + renewal_date from HubSpot. */}
+        </Stub>
+      </Section>
+
+      {/* ════ 6. TASKS — master cross-pipeline list (stub) ════ */}
+      <Section icon={ListChecks} title="Tasks"
+        summary={isOnboarding ? `${openTaskCount} open in onboarding` : ''}
+        open={open.tasks} onToggle={() => toggle('tasks')}>
+        <Stub>
+          A single list of every task across Onboarding, Renewal, and custom-created tasks — with a "create a task for this customer" box that syncs to HubSpot.
+          {' '}Onboarding tasks are live in the Onboarding section above; the unified list is being wired.
+          {/* TODO(data): aggregate catalog tasks (all stages) + renewal tasks + custom tasks; add create-task → HubSpot. */}
+        </Stub>
+      </Section>
+
+      {/* ════ 7. NOTES (wired → NotesPanel) ════ */}
+      <Section icon={StickyNote} title="Notes"
+        summary="Synced from HubSpot" open={open.notes} onToggle={() => toggle('notes')}>
+        <NotesPanel dealId={c.dealId} loadNotes={loadNotes} addNote={addNote} />
+      </Section>
+
+      {/* ════ 8. MEETINGS (stub — TODO(data): Fireflies + prep checklists) ════ */}
+      <Section icon={Calendar} title="Meetings"
+        summary="" open={open.meetings} onToggle={() => toggle('meetings')}>
+        <Stub>
+          Scheduled and past meetings with prep checklists and Fireflies notes, plus schedule-from-template (Kick-Off, Implementation, 30/60-Day, QBR, Renewal…).
+          {/* TODO(data): pull meetings + Fireflies transcripts; reuse meeting templates from the vault SOP. */}
+        </Stub>
+      </Section>
+
+      {/* ════ 9. COMMUNICATIONS (stub — TODO(data): HubSpot comms log) ════ */}
+      <Section icon={Mail} title="Communications"
+        summary="" open={open.comms} onToggle={() => toggle('comms')}>
+        <Stub>
+          The email / text / call log for this account, inbound and outbound, synced from HubSpot.
+          {/* TODO(data): HubSpot engagements (emails, calls, notes) timeline. */}
+        </Stub>
+      </Section>
+
+      {/* ════ DATA CONNECTIONS (wired) ════ */}
+      <Section icon={Link2} title="Data Connections"
+        summary="HubSpot ↔ USR DB" open={open.connections} onToggle={() => toggle('connections')}>
+        <ConnectionsStrip c={c} />
+      </Section>
+
+    </div>
   )
 }
 
