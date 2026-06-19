@@ -13,6 +13,7 @@ import {
 import { TTVPanel, StageControl, DetailsEditor, DealProperties, NotesPanel, effectiveTtv, TTV_STATUS_META } from '../components/OnboardingControls'
 import WeeklyMatrix from '../components/WeeklyMatrix'
 import FilterDropdown, { splitHw } from '../components/FilterDropdown'
+import { isActiveAccount } from '../lib/customerActions'
 import {
   Activity, Bell, ChevronDown, Mail, Phone, Zap, Check, Settings,
   CheckCircle, Send, Copy, ArrowRight, User, Loader2, CheckSquare, Square, Pencil, StickyNote,
@@ -759,7 +760,9 @@ export default function Onboarding() {
     return accounts
       // Early-stage, non-returning, and NOT marked onboarding-complete (Done).
       // Completed customers leave this view and live in My Customers only.
-      .filter(a => EARLY_STAGES.includes(a.deal_stage_label) && a.is_returning !== true && !csByDeal[a.deal_id]?.onboarding_completed_at)
+      // Also hide soft-deleted (is_active=false) and churn-flagged customers —
+      // churn confirm/remove lives on My Customers.
+      .filter(a => isActiveAccount(a) && a.churn_flagged !== true && EARLY_STAGES.includes(a.deal_stage_label) && a.is_returning !== true && !csByDeal[a.deal_id]?.onboarding_completed_at)
       .map(a => {
         const lab = a.lab_name
         const weekly = (lab && weeklyByLab[lab]) || weeklyByDeal[a.deal_id] || []
