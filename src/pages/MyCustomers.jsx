@@ -239,7 +239,7 @@ export default function MyCustomers() {
       name:   (r) => (r.account.company_name || r.snap.lab_name || '').toLowerCase(),
       score:  (r) => r.score,
       renewal:(r) => r.account.renewal_date || null,
-      arr:    (r) => r.account.arr_amount,
+      arr:    (r) => r.account.amount ?? r.account.arr_amount,
       days:   (r) => r.snap.days_since_activity,
     }
     const keyFn = keyFns[sort.field] || keyFns.health

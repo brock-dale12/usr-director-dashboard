@@ -136,7 +136,7 @@ export const handler = async (event) => {
   if (!isAdmin) return json(403, { error: 'Not an admin' })
 
   const ranAt = new Date().toISOString()
-  let ok = false, summary = '', rowsUpserted = 0, unmatched = 0
+  let ok = false, summary = '', rowsUpserted = 0, unmatched = 0, autoCreated = 0
   try {
     // Active lab assignments (matching keys)
     const assigns = await supaService(
@@ -161,8 +161,23 @@ export const handler = async (event) => {
           if (nl === nd || (nl.length >= 4 && (nd.includes(nl) || nl.includes(nd)))) { lab = ln; break }
         }
       }
-      if (!lab) { unmatched++; continue }
       const stage = p.dealstage
+      if (!lab) {
+        // Auto-create a customer for an unmatched deal ONLY when it's in the
+        // Onboarding pipeline (its stage id is in STAGE_LABELS) and is NOT
+        // Closed Lost (132311328). Use the deal name as the lab_name; the
+        // lab_accounts unique constraint on lab_name keeps this idempotent
+        // across re-runs. All other unmatched deals (Sales pipeline, Closed
+        // Lost, or nameless) are still skipped.
+        const isOnboarding = Object.prototype.hasOwnProperty.call(STAGE_LABELS, stage)
+        if (isOnboarding && stage !== '132311328' && dealname) {
+          lab = dealname
+          autoCreated++
+        } else {
+          unmatched++
+          continue
+        }
+      }
       byLab[lab] = {
         lab_name: lab,
         deal_id: did,
@@ -199,7 +214,7 @@ export const handler = async (event) => {
     }
     rowsUpserted = rows.length
     ok = true
-    summary = `${rowsUpserted} lab_accounts rows from ${deals.length} deals (${unmatched} unmatched)`
+    summary = `${rowsUpserted} lab_accounts rows from ${deals.length} deals (${autoCreated} auto-created, ${unmatched} unmatched)`
   } catch (e) {
     summary = String(e.message || e)
   }
