@@ -1334,21 +1334,19 @@ export default function Onboarding() {
                     <div className="ob-bucket-body">
                       {needs.length > 0 && <div className="ob-grouplabel need">▲ Needs action · {needs.length}</div>}
                       {needs.map(c => (
-                        <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
-                          focusMode onStartTasks={() => startTasks(c)}
+                        <CustomerDetail key={c.dealId} {...drawerProps(c)}
+                          expanded={openId === c.dealId}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
-                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
-                          <CustomerDetail {...drawerProps(c)} />
-                        </PipelineCard>
+                          draggable onDragStart={onCardDragStart(c)}
+                          onStartTasks={() => startTasks(c)} />
                       ))}
                       {onTrack.length > 0 && <div className="ob-grouplabel">On track · {onTrack.length}</div>}
                       {onTrack.map(c => (
-                        <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
-                          focusMode onStartTasks={() => startTasks(c)}
+                        <CustomerDetail key={c.dealId} {...drawerProps(c)}
+                          expanded={openId === c.dealId}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
-                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
-                          <CustomerDetail {...drawerProps(c)} />
-                        </PipelineCard>
+                          draggable onDragStart={onCardDragStart(c)}
+                          onStartTasks={() => startTasks(c)} />
                       ))}
                       {arr.length === 0 && <div className="ob-bucket-empty">No customers in this stage · drag a card here to move it in.</div>}
                     </div>
@@ -1410,20 +1408,18 @@ export default function Onboarding() {
                   {featured ? (
                     <>
                       <div className="ob-next-lab">Next up · work this first</div>
-                      <PipelineCard c={featured} d={decoMap[featured.dealId]} open={openId === featured.dealId}
-                        focusMode onStartTasks={() => startTasks(featured)}
+                      <CustomerDetail {...drawerProps(featured)}
+                        expanded={openId === featured.dealId}
                         onToggle={() => setOpenId(openId === featured.dealId ? null : featured.dealId)}
-                        onAdvance={() => moveStage(featured, decoMap[featured.dealId].next)} onComplete={() => completeOnboarding(featured)} onDragStart={onCardDragStart(featured)}>
-                        <CustomerDetail {...drawerProps(featured)} />
-                      </PipelineCard>
+                        draggable onDragStart={onCardDragStart(featured)}
+                        onStartTasks={() => startTasks(featured)} />
                       {rest.length > 0 && <div className="ob-grouplabel">Queue · {rest.length} remaining</div>}
                       {rest.map(c => (
-                        <PipelineCard key={c.dealId} c={c} d={decoMap[c.dealId]} open={openId === c.dealId}
-                          focusMode onStartTasks={() => startTasks(c)}
+                        <CustomerDetail key={c.dealId} {...drawerProps(c)}
+                          expanded={openId === c.dealId}
                           onToggle={() => setOpenId(openId === c.dealId ? null : c.dealId)}
-                          onAdvance={() => moveStage(c, decoMap[c.dealId].next)} onComplete={() => completeOnboarding(c)} onDragStart={onCardDragStart(c)}>
-                          <CustomerDetail {...drawerProps(c)} />
-                        </PipelineCard>
+                          draggable onDragStart={onCardDragStart(c)}
+                          onStartTasks={() => startTasks(c)} />
                       ))}
                     </>
                   ) : (
@@ -1466,14 +1462,10 @@ export default function Onboarding() {
         return (
           <div className="ob-drawer-overlay" onClick={() => setOpenId(null)}>
             <div className="ob-drawer-modal" onClick={e => e.stopPropagation()}>
-              <div className="ob-drawer-modal-head">
-                <span className="status-dot" style={{ background: STATUS_COLORS[c.healthColor || 'unknown'] }} />
-                <span className="ob-drawer-modal-name">{c.name}</span>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 6px 0' }}>
                 <button className="ob-modal-x" onClick={() => setOpenId(null)} aria-label="Close">✕</button>
               </div>
-              <div className="ob-card open" style={{ border: 'none', boxShadow: 'none' }}>
-                <CustomerDetail {...drawerProps(c)} />
-              </div>
+              <CustomerDetail {...drawerProps(c)} expanded onToggle={() => setOpenId(null)} onStartTasks={() => startTasks(c)} />
             </div>
           </div>
         )

@@ -637,6 +637,8 @@ export function LabCard({ snap, allHistory, viewingId, stage, score = null, acco
           <>
             <CustomerDetail
               isOnboarding={false}
+              showHeader={false}
+              expanded
               c={customerDetail}
               onSaveCs={onSaveCs}
               savingCs={savingCs}
