@@ -899,7 +899,18 @@ export default function MyRegion() {
       const latestW = snaps?.[0]?.week_start
       setLatestWeek(latestW)
       setAllHistory(snaps || [])
-      setCurrentSnaps(latestW ? snaps.filter(s => s.week_start === latestW) : [])
+      // Hide soft-deleted / churn-flagged customers from the region list. The
+      // roster (lab_accounts) is the source of truth; weekly snapshots can lag a
+      // sync, so a just-removed customer shouldn't linger here.
+      let excludeNames = new Set()
+      try {
+        const { data: inactive } = await supabase
+          .from('lab_accounts').select('lab_name')
+          .or('is_active.eq.false,churn_flagged.eq.true')
+        excludeNames = new Set((inactive || []).map(r => r.lab_name).filter(Boolean))
+      } catch { /* is_active/churn columns may not exist pre-migration — skip */ }
+      const current = latestW ? snaps.filter(s => s.week_start === latestW) : []
+      setCurrentSnaps(current.filter(s => !excludeNames.has(s.lab_name)))
 
       const { data: assignments } = await supabase
         .from('lab_assignments').select('lab_name, pipeline_stage')

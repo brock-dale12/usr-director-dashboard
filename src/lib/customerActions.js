@@ -12,6 +12,37 @@ import { supabase } from './supabase'
 // HubSpot-owned fields that the CS edit panel may push to HubSpot in real time.
 export const HS_PUSHABLE = ['kickoff_date', 'contact_name', 'contact_email', 'contact_phone', 'speed_lab_director']
 
+// Roster-visibility predicate. The HubSpot sync soft-deletes via is_active=false
+// (never a hard delete), so every customer view should hide inactive rows. Treat
+// null/undefined as active so views still work pre-migration.
+export const isActiveAccount = (a) => a?.is_active !== false
+
+// Confirm a churn flag → soft-delete the customer (is_active=false). Drops it out
+// of every view; the row + history are preserved. Admin-gated server-side.
+export async function confirmChurn(dealId) {
+  return churnAction(dealId, 'confirm_churn')
+}
+
+// Dismiss a churn flag → keep the customer active (sync mis-flagged, or they're
+// being retained). Clears the flag so the review affordance disappears.
+export async function keepActive(dealId) {
+  return churnAction(dealId, 'keep_active')
+}
+
+// Shared call to the admin-gated Netlify function (browser can't write lab_accounts
+// directly — service key + is_admin check live in customer-active.js).
+async function churnAction(dealId, action) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const r = await fetch('/.netlify/functions/customer-active', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ dealId, action }),
+  })
+  const res = await r.json().catch(() => ({}))
+  if (!(r.ok && res.ok)) throw new Error(res.error || `HTTP ${r.status}`)
+  return res
+}
+
 // Push changed fields to the HubSpot deal via the Netlify Function (the browser
 // never holds the HubSpot token). Returns the parsed response { ok, error, ... }.
 export async function pushToHubspot(dealId, changes) {
