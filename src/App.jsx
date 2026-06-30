@@ -8,6 +8,7 @@ import OutreachHub from './pages/OutreachHub'
 import Leaderboard from './pages/Leaderboard'
 import AdminOverview from './pages/AdminOverview'
 import Onboarding from './pages/Onboarding'
+import OnboardingBoard from './pages/OnboardingBoard'
 import Renewals from './pages/Renewals'
 import Payments from './pages/Payments'
 import DataConnections from './pages/DataConnections'
@@ -80,6 +81,14 @@ export default function App() {
         />
 
         {/* Admin-only: Customer Success Hub pages */}
+        <Route
+          path="/board"
+          element={
+            <ProtectedRoute adminOnly>
+              <Layout><OnboardingBoard /></Layout>
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/onboarding"
           element={
