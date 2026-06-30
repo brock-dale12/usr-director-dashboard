@@ -152,6 +152,20 @@ Deno.serve(async () => {
       return mapDealToRow(arr[0].d, arr[0].cid);
     });
 
+    // Sanity guard: a HubSpot API hiccup can return far fewer deals than reality.
+    // If the roster collapsed >30% vs the last SUCCESSFUL run, abort WITHOUT writing
+    // (no upsert, no churn sweep) and alert — better stale than wrongly churned.
+    const lastOk = await supaService(
+      `sync_runs?select=rows_upserted&job=eq.${JOB}&status=eq.success&order=started_at.desc&limit=1`,
+    ) as Array<{ rows_upserted: number | null }>;
+    const prev = lastOk?.[0]?.rows_upserted ?? null;
+    if (prev && prev > 0 && rows.length < prev * 0.7) {
+      const msg = `roster sanity guard: ${rows.length} deals vs ${prev} last run (>30% drop) — aborting without overwrite`;
+      await recordRun(JOB, "error", 0, startedAt, msg);
+      await alertSlack(JOB, new Error(msg));
+      return new Response(JSON.stringify({ job: JOB, aborted: true, reason: msg }), { status: 409 });
+    }
+
     // Upsert roster (merge on deal_id — preserves existing enrichment).
     for (let i = 0; i < rows.length; i += 100) {
       await supaService("lab_accounts?on_conflict=deal_id", "POST", rows.slice(i, i + 100), "resolution=merge-duplicates,return=minimal");

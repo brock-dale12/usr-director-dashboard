@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { MapPin, Mail, Trophy, Shield, LogOut, Users, Rocket, RefreshCw, CreditCard, Link2, Settings as SettingsIcon } from 'lucide-react'
 import SpeedLabLogo from './SpeedLabLogo'
 import USRLogo from './USRLogo'
+import SyncStatusBadge from './SyncStatusBadge'
 
 // Speed Lab Director nav — unchanged.
 const DIRECTOR_NAV = [
@@ -78,6 +79,9 @@ export default function Layout({ children }) {
             <NavItem key={item.to} {...item} />
           ))}
         </nav>
+
+        {/* Data sync freshness — admin only */}
+        {isAdmin && <SyncStatusBadge />}
 
         {/* Footer: user + sign out */}
         <div className="sidebar-footer">
