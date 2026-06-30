@@ -22,10 +22,15 @@
 | Slack failure alert | `supabase/functions/_shared/slack.ts` | ✅ written |
 | `hs_engagements` + `sync_runs` cols | `supabase/migrations/20260630_hs_engagements.sql` | ✅ written |
 | **TTV sync (kickoff-anchored)** | `supabase/functions/sync-ttv/index.ts` | ✅ written, unrun |
-| `sync-weekly-activity` (Sat–Fri) | — | ▢ next |
+| `sync-weekly-activity` (Sat–Fri) | `supabase/functions/sync-weekly-activity/index.ts` | ✅ written, unrun |
 | `sync-monthly-health` | — | ▢ next |
 | `sync-hubspot-deals` (port hubspot-sync.js) | — | ▢ next |
 | `sync-hubspot-engagements` | — | ▢ next |
+
+**`sync-weekly-activity` write columns** (must match the table): `director_id, lab_name, week_start,
+health_color, days_since_activity, last_activity_date, org_id, logins_week, data_pts_week, prs_week,
+athletes_added_week, recaps_week, trigger_type`; on_conflict `(lab_name, week_start)`. Roster from
+`lab_assignments` (lab_name, director_id, hubspot_company_id). Note: writes `trigger_type='cron'`.
 | `pg_cron` schedule | — | ▢ after functions verified |
 
 ## Prereqs (human)
