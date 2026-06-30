@@ -1,8 +1,9 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { MapPin, Mail, Trophy, Shield, LogOut, Users, Rocket, RefreshCw, CreditCard, Link2, Settings as SettingsIcon } from 'lucide-react'
+import { MapPin, Mail, Trophy, Shield, LogOut, Users, Rocket, RefreshCw, CreditCard, Link2, Settings as SettingsIcon, KanbanSquare } from 'lucide-react'
 import SpeedLabLogo from './SpeedLabLogo'
 import USRLogo from './USRLogo'
+import SyncStatusBadge from './SyncStatusBadge'
 
 // Speed Lab Director nav — unchanged.
 const DIRECTOR_NAV = [
@@ -14,9 +15,10 @@ const DIRECTOR_NAV = [
 
 // USR internal staff (Admin) nav — Customer Success Hub.
 const ADMIN_NAV = [
-  { to: '/',            icon: Users,      label: 'My Customers', exact: true  },
-  { to: '/outreach',    icon: Mail,       label: 'Outreach Hub', exact: false },
-  { to: '/onboarding',  icon: Rocket,     label: 'Onboarding',   exact: false },
+  { to: '/',            icon: Users,        label: 'My Customers', exact: true  },
+  { to: '/board',       icon: KanbanSquare, label: 'Pipeline',     exact: false },
+  { to: '/outreach',    icon: Mail,         label: 'Outreach Hub', exact: false },
+  { to: '/onboarding',  icon: Rocket,       label: 'Onboarding',   exact: false },
   { to: '/renewals',    icon: RefreshCw,  label: 'Renewals',     exact: false },
   { to: '/payments',    icon: CreditCard, label: 'Payments',     exact: false },
   { to: '/admin',       icon: Shield,     label: 'Director View', exact: false },
@@ -78,6 +80,9 @@ export default function Layout({ children }) {
             <NavItem key={item.to} {...item} />
           ))}
         </nav>
+
+        {/* Data sync freshness — admin only */}
+        {isAdmin && <SyncStatusBadge />}
 
         {/* Footer: user + sign out */}
         <div className="sidebar-footer">
