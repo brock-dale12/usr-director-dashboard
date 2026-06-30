@@ -25,8 +25,9 @@
 | `sync-weekly-activity` (Sat–Fri) | `supabase/functions/sync-weekly-activity/index.ts` | ✅ written, unrun |
 | `sync-monthly-health` | `supabase/functions/sync-monthly-health/index.ts` | ✅ written, unrun |
 | `sync-hubspot-deals` (port hubspot-sync.js) | `supabase/functions/sync-hubspot-deals/index.ts` | ✅ written, unrun |
-| `sync-hubspot-engagements` | — | ▢ deferred (net-new; hs_engagements table ready) |
-| `pg_cron` schedule | `supabase/cron-schedule.sql` | ✅ written (4 jobs) |
+| `sync-hubspot-engagements` | `supabase/functions/sync-hubspot-engagements/index.ts` | ✅ written, unrun |
+| `pg_cron` schedule | `supabase/cron-schedule.sql` | ✅ written (5 jobs) |
+| Freshness/"last synced" logic | `src/lib/syncFreshness.js` (+ tests) | ✅ written + unit-tested |
 
 **`sync-weekly-activity` write columns** (must match the table): `director_id, lab_name, week_start,
 health_color, days_since_activity, last_activity_date, org_id, logins_week, data_pts_week, prs_week,
@@ -64,5 +65,21 @@ Then in the SQL editor: `select deal_id, status, recaps_in_window, days_to_five 
 
 ## Then
 - Wire `pg_cron` per spec §5 (UTC times; decide fixed-UTC vs seasonal DST).
-- Add the "last synced" badge (amber/red when newest success > ~26h).
+- Surface the "last synced" badge using `src/lib/syncFreshness.js` (amber/red when newest success > 26h, red when a run errors).
 - Repoint the dashboard "Refresh now" button at `sync-hubspot-deals` (don't keep a 2nd pull copy in Netlify).
+
+## Data accuracy & consistency (how we trust this without me executing it)
+Two separate guarantees:
+
+**ACCURACY — is each number right?**
+1. **Parity check before trusting** (per job): run the function, then the vault Python over the SAME period, and diff the resulting rows. Scores must match. For `sync-weekly-activity` this is a *recompute* reconciliation (we moved to Sat–Fri) — spot-check colors against last-verified-assessment dates instead of a row diff.
+2. **Spot checks**: pick 2–3 known labs and hand-run the SQL; confirm `onboarding_ttv.recaps_in_window`, weekly `health_color`, and a monthly `health_score` match.
+3. **No-fabrication guardrails baked in**: functions write `null` / `'unknown'` rather than invent (e.g. unresolved org → `health_color='unknown'`; TTV stays null until real recaps land). They never silently zero-out.
+4. **Suggested sanity guard (todo)**: have `sync-hubspot-deals` refuse to overwrite if the active-deal count drops > ~30% vs the last successful run (alert instead) — protects against a HubSpot API hiccup nuking the roster.
+
+**CONSISTENCY — did it run, recently, completely?**
+1. **`sync_runs` row every run** (success/error + row count + error text) — written in both the success and `catch` paths of every function.
+2. **"Last synced" badge** via `syncFreshness.js`: per-job `ok / stale (>26h) / error / down`, plus an overall rollup. Unit-tested. This is the human-visible signal that updates are flowing.
+3. **Slack alert on failure** (`SLACK_ALERT_WEBHOOK`) — you hear about a broken job the morning it breaks.
+4. **Idempotent daily re-pull**: a fully failed day self-heals on the next run; no catch-up queue.
+5. **Who executes**: the deployed Supabase project (pg_cron) runs these — not me and not a laptop. Once deployed + verified once, consistency is automatic and observable.

@@ -12,7 +12,7 @@
 --   • service-role key in Vault as 'service_role_key'
 --   • replace <PROJECT_REF> with your project ref
 -- Dependency order: weekly (09:15) must finish before monthly (09:30); ttv + deals
--- are independent. Engagements job is NOT yet built — add it here once it ships.
+-- + engagements are independent.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 create extension if not exists pg_cron;
@@ -29,6 +29,14 @@ create extension if not exists pg_net;
 select cron.schedule('sync-hubspot-deals', '0 9 * * *', $$
   select net.http_post(
     url     := 'https://<PROJECT_REF>.supabase.co/functions/v1/sync-hubspot-deals',
+    headers := jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='service_role_key'),'Content-Type','application/json'),
+    body    := '{}'::jsonb);
+$$);
+
+-- 05:05 ET — HubSpot engagements (notes + meetings → hs_engagements)
+select cron.schedule('sync-hubspot-engagements', '5 9 * * *', $$
+  select net.http_post(
+    url     := 'https://<PROJECT_REF>.supabase.co/functions/v1/sync-hubspot-engagements',
     headers := jsonb_build_object('Authorization','Bearer '||(select decrypted_secret from vault.decrypted_secrets where name='service_role_key'),'Content-Type','application/json'),
     body    := '{}'::jsonb);
 $$);
