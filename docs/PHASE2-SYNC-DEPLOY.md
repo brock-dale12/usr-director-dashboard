@@ -23,15 +23,21 @@
 | `hs_engagements` + `sync_runs` cols | `supabase/migrations/20260630_hs_engagements.sql` | ✅ written |
 | **TTV sync (kickoff-anchored)** | `supabase/functions/sync-ttv/index.ts` | ✅ written, unrun |
 | `sync-weekly-activity` (Sat–Fri) | `supabase/functions/sync-weekly-activity/index.ts` | ✅ written, unrun |
-| `sync-monthly-health` | — | ▢ next |
-| `sync-hubspot-deals` (port hubspot-sync.js) | — | ▢ next |
-| `sync-hubspot-engagements` | — | ▢ next |
+| `sync-monthly-health` | `supabase/functions/sync-monthly-health/index.ts` | ✅ written, unrun |
+| `sync-hubspot-deals` (port hubspot-sync.js) | `supabase/functions/sync-hubspot-deals/index.ts` | ✅ written, unrun |
+| `sync-hubspot-engagements` | — | ▢ deferred (net-new; hs_engagements table ready) |
+| `pg_cron` schedule | `supabase/cron-schedule.sql` | ✅ written (4 jobs) |
 
 **`sync-weekly-activity` write columns** (must match the table): `director_id, lab_name, week_start,
 health_color, days_since_activity, last_activity_date, org_id, logins_week, data_pts_week, prs_week,
 athletes_added_week, recaps_week, trigger_type`; on_conflict `(lab_name, week_start)`. Roster from
 `lab_assignments` (lab_name, director_id, hubspot_company_id). Note: writes `trigger_type='cron'`.
-| `pg_cron` schedule | — | ▢ after functions verified |
+
+**Only `sync-hubspot-engagements` remains unbuilt** — the one net-new pull (HubSpot notes + meetings
+→ `hs_engagements`, 12-mo backfill then incremental by `hs_lastmodifieddate`). Deferred as the most
+API-specific piece; its table + indexes are already migrated. `sync-hubspot-deals` runs cron-style
+(no per-user admin gate) — if you wire "Refresh now" to it, gate the invocation (verify_jwt + is_admin)
+at the edge. Wire `pg_cron` via `supabase/cron-schedule.sql` only after each function is parity-verified.
 
 ## Prereqs (human)
 1. Supabase: enable `pg_cron`, `pg_net`. Add Vault secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
